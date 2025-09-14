@@ -1,0 +1,7 @@
+<svg width="120" height="120" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="120" height="120" rx="20" fill="#F6EEE0"/>
+  <path d="M30 80C30 80 38 58 60 58C82 58 90 80 90 80" stroke="#D4AF37" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="44" cy="66" r="4" fill="#362706"/>
+  <circle cx="76" cy="66" r="4" fill="#362706"/>
+  <text x="60" y="32" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" fill="#362706" font-size="18">QuickPark</text>
+</svg>
