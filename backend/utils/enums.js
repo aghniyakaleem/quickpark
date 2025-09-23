@@ -1,0 +1,22 @@
+// roles
+export const ROLES = {
+  SUPER_ADMIN: "SUPER_ADMIN",
+  VALET: "VALET",
+};
+
+// ticket status
+export const STATUSES = {
+  AWAITING_VEHICLE_NUMBER: "AWAITING_VEHICLE_NUMBER",
+  PARKED: "PARKED",
+  READY: "READY",
+  RECALLED: "RECALLED",
+  COMPLETED: "COMPLETED",
+};
+
+// payment status
+export const PAYMENT_STATUSES = {
+  UNPAID: "UNPAID",
+  PENDING: "PENDING",
+  PAID: "PAID",
+  PAY_CASH_ON_DELIVERY: "PAY_CASH_ON_DELIVERY",
+};

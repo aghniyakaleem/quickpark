@@ -2,42 +2,33 @@ import http from "http";
 import app from "./app.js";
 import { connectDB } from "./config/db.js";
 import dotenv from "dotenv";
+import { initSocket } from "./services/socketService.js";
+
+// Load .env from current folder (backend/)
 dotenv.config();
-import { Server as IOServer } from "socket.io";
-import { attachIo, emitToLocation } from "./services/socketService.js";
 
 const PORT = process.env.PORT || 4000;
 
 async function start() {
-  await connectDB();
-  const httpServer = http.createServer(app);
-  const io = new IOServer(httpServer, {
-    cors: {
-      origin: process.env.CORS_ORIGIN || process.env.FRONTEND_URL || "*",
-      methods: ["GET", "POST"]
+  try {
+    if (!process.env.JWT_SECRET) {
+      throw new Error("JWT_SECRET not set in .env");
     }
-  });
 
-  // attach socket instance to service
-  // we'll attach minimal events and allow clients to join location rooms
-  io.on("connection", (socket) => {
-    socket.on("join", ({ locationId }) => {
-      if (locationId) socket.join(`location:${locationId}`);
+    await connectDB();
+
+    const httpServer = http.createServer(app);
+
+    // Initialize socket.io
+    initSocket(httpServer);
+
+    httpServer.listen(PORT, () => {
+      console.log(`✅ Server running on port ${PORT}`);
     });
-  });
-
-  // make emitToLocation use this instance by setting exported ioInstance
-  // hack: override attachIo function to set internal instance
-  import("./services/socketService.js").then(mod => {
-    mod.attachIo(io);
-  });
-
-  httpServer.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
+  } catch (err) {
+    console.error("❌ Failed to start server", err);
+    process.exit(1);
+  }
 }
 
-start().catch(err => {
-  console.error("Failed to start server", err);
-  process.exit(1);
-});
+start();

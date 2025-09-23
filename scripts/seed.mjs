@@ -1,79 +1,67 @@
 // === FILE: scripts/seed.mjs ===
-import mongoose from "../backend/node_modules/mongoose/index.js";
+import mongoose from "../backend/db.js";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
-import Location from "../backend/models/Location.js";
-import User from "../backend/models/User.js";
 
 dotenv.config({ path: ".env" });
 
-const seed = async () => {
-  try {
-    await mongoose.connect(process.env.MONGO_URI);
-    console.log("✅ Connected to MongoDB");
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error("MONGO_URI missing");
 
-    // Clear old data
+async function seed() {
+  try {
+    // Connect first
+    await mongoose.connect(MONGO_URI, {
+      dbName: "quickpark",
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+    });
+    console.log("✅ MongoDB connected (readyState =", mongoose.connection.readyState, ")");
+
+    // Import models AFTER connection so they register on the same default mongoose connection
+    const { default: Location } = await import("../backend/models/Location.js");
+    const { default: User } = await import("../backend/models/User.js");
+
+    // DEBUG: double-check model connection state
+    console.log("Models loaded. Collections:", (await mongoose.connection.db.listCollections().toArray()).map(c=>c.name));
+
+    // Clear existing data
     await User.deleteMany({});
     await Location.deleteMany({});
+    console.log("🧹 Cleared existing users and locations");
 
-    // Create Super Admin
-    const superAdminPassword = await bcrypt.hash("SuperAdmin123!", 10);
+    // (rest of your seeding: super admin, locations, valets)
+    const superAdminPasswordHash = await bcrypt.hash("SuperAdmin123!", 10);
     const superAdmin = await User.create({
+      name: "Super Admin",
       email: "admin@quickpark.co.in",
-      password: superAdminPassword,
-      role: "superadmin",
+      passwordHash: superAdminPasswordHash,
+      role: "SUPER_ADMIN",
     });
 
-    // Create Locations
     const freeLocation = await Location.create({
       name: "Cafe Deluxe",
       slug: "cafe-deluxe",
       paymentRequired: false,
     });
-
     const paidLocation = await Location.create({
       name: "Grand Hotel",
       slug: "grand-hotel",
       paymentRequired: true,
     });
 
-    // Create Valet Users
-    const valet1Password = await bcrypt.hash("Valet123!", 10);
-    const valet2Password = await bcrypt.hash("Valet123!", 10);
-
-    const valet1 = await User.create({
-      email: "valet1@quickpark.co.in",
-      password: valet1Password,
-      role: "valet",
-      locationId: freeLocation._id,
-    });
-
-    const valet2 = await User.create({
-      email: "valet2@quickpark.co.in",
-      password: valet2Password,
-      role: "valet",
-      locationId: paidLocation._id,
-    });
+    const valetPasswordHash = await bcrypt.hash("Valet123!", 10);
+    await User.create({ name: "Valet 1", email: "valet1@quickpark.co.in", passwordHash: valetPasswordHash, role: "VALET", locationId: freeLocation._id });
+    await User.create({ name: "Valet 2", email: "valet2@quickpark.co.in", passwordHash: valetPasswordHash, role: "VALET", locationId: paidLocation._id });
 
     console.log("🌱 Seed completed successfully!");
-    console.log("\n--- Accounts Created ---");
-    console.log("Super Admin:");
-    console.log("  Email: admin@quickpark.co.in");
-    console.log("  Password: SuperAdmin123!\n");
-
-    console.log("Valets:");
-    console.log("  Email: valet1@quickpark.co.in | Password: Valet123! | Location: Cafe Deluxe (Free)");
-    console.log("  Email: valet2@quickpark.co.in | Password: Valet123! | Location: Grand Hotel (Paid)\n");
-
-    console.log("--- Public Location URLs ---");
-    console.log(`Cafe Deluxe: ${process.env.PUBLIC_URL}/l/${freeLocation.slug}`);
-    console.log(`Grand Hotel: ${process.env.PUBLIC_URL}/l/${paidLocation.slug}\n`);
-
-    process.exit(0);
   } catch (err) {
     console.error("❌ Seeding error:", err);
-    process.exit(1);
+  } finally {
+    await mongoose.disconnect();
+    console.log("🔌 MongoDB disconnected");
+    process.exit(0);
   }
-};
+}
 
 seed();

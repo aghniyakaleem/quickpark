@@ -1,7 +1,8 @@
+// === FILE: src/pages/ValetLogin.jsx ===
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import api from "../axiosConfig";
 
 export default function ValetLogin() {
   const [email, setEmail] = useState("");
@@ -11,11 +12,15 @@ export default function ValetLogin() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     try {
-      const res = await axios.post("/api/valet/login", { email, password }); // ✅ fixed route
-      login(res.data.token); // save token in context/localStorage
-      navigate("/valet/dashboard"); // redirect
+      const res = await api.post("/api/auth/login", { email, password });
+      login(res.data.token, res.data.user);
+
+      if (res.data.user.role === "VALET") {
+        navigate("/valet/dashboard");
+      } else {
+        alert("Unauthorized: Not a valet account ❌");
+      }
     } catch (err) {
       console.error(err.response?.data || err.message);
       alert(err.response?.data?.message || "Login failed ❌");
@@ -23,35 +28,54 @@ export default function ValetLogin() {
   };
 
   return (
-    <div className="max-w-sm mx-auto mt-20">
-      <form onSubmit={handleSubmit} className="bg-white p-6 shadow rounded-lg">
-        <h2 className="text-xl font-bold mb-4">Valet Login</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-yellow-50 via-white to-yellow-50 px-4">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+        <h2 className="text-3xl font-extrabold text-yellow-700 text-center mb-6">
+          Valet Login
+        </h2>
 
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full border p-2 mb-3 rounded"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <input
+            type="email"
+            placeholder="Email"
+            className="w-full border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
 
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full border p-2 mb-3 rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+          <input
+            type="password"
+            placeholder="Password"
+            className="w-full border border-gray-300 rounded-xl px-4 py-2 focus:outline-none focus:ring-2 focus:ring-yellow-300"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
 
-        <button
-          type="submit"
-          className="w-full bg-gold text-white py-2 rounded hover:opacity-90 transition"
-        >
-          Login
-        </button>
-      </form>
+          <button
+            type="submit"
+            className="w-full bg-yellow-600 text-white py-3 rounded-xl shadow hover:bg-yellow-700 transition"
+          >
+            Login
+          </button>
+        </form>
+
+        <div className="mt-6 text-center text-gray-600">
+          <p>
+            Forgot password?{" "}
+            <Link to="/forgot-password" className="text-yellow-700 font-semibold hover:underline">
+              Reset here
+            </Link>
+          </p>
+          <p className="mt-2">
+            Back to{" "}
+            <Link to="/" className="text-yellow-700 font-semibold hover:underline">
+              Home
+            </Link>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

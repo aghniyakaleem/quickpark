@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose from "../db.js";
 import slugify from "slugify";
 
 const LocationSchema = new mongoose.Schema({

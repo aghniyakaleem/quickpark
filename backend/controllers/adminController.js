@@ -1,7 +1,5 @@
 import Location from "../models/Location.js";
 import User from "../models/User.js";
-import { shortId } from "../utils/helpers.js";
-
 /**
  * Create a location and return public URL (/l/:slug)
  */
