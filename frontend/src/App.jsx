@@ -9,7 +9,8 @@ import ValetDashboard from "./pages/ValetDashboard";
 import AdminLogin from "./pages/AdminLogin";
 import AdminLocations from "./pages/AdminLocations";
 import AdminValets from "./pages/AdminValets";
-
+import Terms from "./pages/Terms"; // ✅ new
+import Privacy from "./pages/Privacy"; //
 function App() {
   return (
     <div className="font-sans">
@@ -23,6 +24,8 @@ function App() {
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin/locations" element={<AdminLocations />} />
         <Route path="/admin/valets" element={<AdminValets />} />
+        <Route path="/terms" element={<Terms />} /> {/* ✅ Terms page */}
+        <Route path="/privacy" element={<Privacy />} /> {/* ✅ Privacy page */}
       </Routes>
     </div>
   );

@@ -1,8 +1,14 @@
 import Twilio from "twilio";
-import dotenv from "dotenv";
-dotenv.config();
 
-const { TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, BRAND_NAME } = process.env;
+// Read from environment variables injected by Vercel
+const {
+  TWILIO_ACCOUNT_SID,
+  TWILIO_AUTH_TOKEN,
+  TWILIO_WHATSAPP_FROM,
+  BRAND_NAME = "QuickPark",
+} = process.env;
+
+// Initialize client only if creds exist
 let client = null;
 if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
   client = Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
@@ -21,35 +27,37 @@ function toWhatsAppAddress(phone) {
 
 async function sendTemplate(phone, message) {
   if (!client) {
-    console.warn("Twilio client not configured; skipping WhatsApp send. Message:", message);
+    console.warn("⚠️ Twilio client not configured; skipping WhatsApp send. Message:", message);
     return;
   }
+
   const to = toWhatsAppAddress(phone);
   try {
     await client.messages.create({
-      from: TWILIO_WHATSAPP_FROM,
+      from: `whatsapp:${TWILIO_WHATSAPP_FROM}`,
       to,
-      body: message
+      body: message,
     });
   } catch (err) {
-    console.error("WhatsApp send failed:", err.message || err);
+    console.error("❌ WhatsApp send failed:", err.message || err);
   }
 }
 
 export const WhatsAppTemplates = {
   ticketCreated: (ticketId, locationName) =>
-    `QuickPark: Your ticket ${ticketId} at ${locationName} is created. Reply or wait for updates.`,
+    `${BRAND_NAME}: Your ticket ${ticketId} at ${locationName} is created. Reply or wait for updates.`,
   carParked: (vehicleNumber, parkedAt, eta) =>
-    `QuickPark: Your car ${vehicleNumber} is parked at ${parkedAt}. It is approximately ${eta} minutes away.`,
+    `${BRAND_NAME}: Your car ${vehicleNumber} is parked at ${parkedAt}. It is approximately ${eta} minutes away.`,
   recallReceived: (ticketId) =>
-    `QuickPark: Your recall request for ticket ${ticketId} has been received. Valet will prepare your car.`,
-  etaX: (x) => `QuickPark: Your car will be ready in ${x} minutes.`,
-  readyAtGate: () => `QuickPark: Your car is at the gate now.`,
-  dropped: () => `QuickPark: Car delivered. Thank you for using QuickPark.`,
-  paymentConfirmation: (ticketId) => `QuickPark: Payment received for ticket ${ticketId}. Thank you.`
+    `${BRAND_NAME}: Your recall request for ticket ${ticketId} has been received. Valet will prepare your car.`,
+  etaX: (x) => `${BRAND_NAME}: Your car will be ready in ${x} minutes.`,
+  readyAtGate: () => `${BRAND_NAME}: Your car is at the gate now.`,
+  dropped: () => `${BRAND_NAME}: Car delivered. Thank you for using ${BRAND_NAME}.`,
+  paymentConfirmation: (ticketId) =>
+    `${BRAND_NAME}: Payment received for ticket ${ticketId}. Thank you.`,
 };
 
 export default {
   sendTemplate,
-  WhatsAppTemplates
+  WhatsAppTemplates,
 };

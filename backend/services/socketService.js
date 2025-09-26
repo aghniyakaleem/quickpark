@@ -10,29 +10,30 @@ export function initSocket(server) {
     }
   });
 
-  attachIo(io);
-  return io;
-}
-
-export function attachIo(io) {
   ioInstance = io;
 
-  ioInstance.on("connection", (socket) => {
+  io.on("connection", (socket) => {
     console.log("New client connected:", socket.id);
 
-    socket.on("join", ({ locationId }) => {
+    // Listen for frontend to join a location room
+    socket.on("joinLocation", (locationId) => {
       if (!locationId) return;
-      socket.join(`location:${locationId}`);
-      console.log(`Socket ${socket.id} joined room location:${locationId}`);
+      const roomName = `location:${locationId}`;
+      socket.join(roomName);
+      console.log(`Socket ${socket.id} joined room ${roomName}`);
     });
 
     socket.on("disconnect", () => {
       console.log("Client disconnected:", socket.id);
     });
   });
+
+  return io;
 }
 
+// Emit event to all clients in a location room
 export function emitToLocation(locationId, event, payload) {
   if (!ioInstance) return;
-  ioInstance.to(`location:${locationId}`).emit(event, payload);
+  const roomName = `location:${locationId}`;
+  ioInstance.to(roomName).emit(event, payload);
 }

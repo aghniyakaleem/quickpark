@@ -1,7 +1,11 @@
 import express from "express";
-import { createTicketPublic, recallRequestPublic } from "../controllers/ticketController.js";
+import { 
+  createTicketPublic, 
+  recallRequestPublic, 
+  valetUpdateTicket 
+} from "../controllers/ticketController.js";
 import { publicRateLimiter } from "../middleware/rateLimiter.js";
-import { body } from "express-validator";
+import { body, param } from "express-validator";
 import { handleValidation } from "../middleware/validate.js";
 
 const router = express.Router();
@@ -11,7 +15,8 @@ const router = express.Router();
  * POST /api/tickets/public/:slug
  * body: { phone }
  */
-router.post("/public/:slug",
+router.post(
+  "/public/:slug",
   publicRateLimiter,
   body("phone").isString().notEmpty(),
   handleValidation,
@@ -19,14 +24,34 @@ router.post("/public/:slug",
 );
 
 /**
+ * Public recall
  * POST /api/tickets/public/:slug/recall
  * body: { ticketShortId, payMode }
  */
-router.post("/public/:slug/recall",
+router.post(
+  "/public/:slug/recall",
   publicRateLimiter,
   body("ticketShortId").isString().notEmpty(),
   handleValidation,
   recallRequestPublic
+);
+
+/**
+ * Valet updates a ticket (vehicle number, ETA, parkedAt, status, payment)
+ * PUT /api/tickets/:ticketId/valet-update
+ * body: { vehicleNumber, etaMinutes, parkedAt, status, paymentStatus, paymentProvider }
+ */
+router.put(
+  "/:ticketId/valet-update",
+  param("ticketId").isString().notEmpty(),
+  body("vehicleNumber").optional().isString(),
+  body("etaMinutes").optional().isInt({ min: 0 }),
+  body("parkedAt").optional().isString(),
+  body("status").optional().isString(),
+  body("paymentStatus").optional().isString(),
+  body("paymentProvider").optional().isString(),
+  handleValidation,
+  valetUpdateTicket
 );
 
 export default router;

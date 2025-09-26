@@ -10,9 +10,20 @@ export async function login(req, res) {
   const { email, password } = req.body;
   const user = await User.findOne({ email: email.toLowerCase() });
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
-  //const ok = await user.validatePassword(password);
-  //if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-  const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  // const ok = await user.validatePassword(password);
+  // if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+
+  // Include locationId in the JWT
+  const token = jwt.sign(
+    {
+      id: user._id,
+      role: user.role,
+      locationId: user.locationId || null // ✅ added
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRES }
+  );
+
   res.json({
     token,
     user: {
