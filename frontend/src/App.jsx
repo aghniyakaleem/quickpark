@@ -9,8 +9,8 @@ import ValetDashboard from "./pages/ValetDashboard";
 import AdminLogin from "./pages/AdminLogin";
 import AdminLocations from "./pages/AdminLocations";
 import AdminValets from "./pages/AdminValets";
-import Terms from "./pages/Terms"; // ✅ new
-import Privacy from "./pages/Privacy"; //
+import Terms from "./pages/TermsAndConditions"; // ✅ new
+import Privacy from "./pages/PrivacyPolicy"; //
 function App() {
   return (
     <div className="font-sans">
