@@ -11,6 +11,8 @@ import AdminLocations from "./pages/AdminLocations";
 import AdminValets from "./pages/AdminValets";
 import Terms from "./pages/TermsAndConditions"; // ✅ new
 import Privacy from "./pages/PrivacyPolicy"; //
+import FaqPage from "./pages/FaqPage";
+import AboutPage from "./pages/AboutPage";
 function App() {
   return (
     <div className="font-sans">
@@ -26,6 +28,8 @@ function App() {
         <Route path="/admin/valets" element={<AdminValets />} />
         <Route path="/terms" element={<Terms />} /> {/* ✅ Terms page */}
         <Route path="/privacy" element={<Privacy />} /> {/* ✅ Privacy page */}
+        <Route path="/faq" element={<FaqPage />} />
+<Route path="/about" element={<AboutPage />} />
       </Routes>
     </div>
   );

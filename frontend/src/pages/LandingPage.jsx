@@ -1,6 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
+import { Link } from "react-router-dom";
 
 export default function LandingPage() {
   return (
@@ -25,8 +26,12 @@ export default function LandingPage() {
           transition={{ delay: 0.5, duration: 0.8 }}
         >
           The luxury <span className="font-semibold">valet SaaS platform</span>{" "}
-          built for <span className="italic">cafés, restaurants, hotels, and wedding venues</span>. 
-          Deliver a seamless valet experience that delights your customers and enhances your brand.
+          built for{" "}
+          <span className="italic">
+            cafés, restaurants, hotels, and wedding venues
+          </span>
+          . Deliver a seamless valet experience that delights your customers and
+          enhances your brand.
         </motion.p>
 
         <motion.div
@@ -36,13 +41,13 @@ export default function LandingPage() {
           transition={{ delay: 1, duration: 0.8 }}
         >
           <a
-            href="tel:+911234567890"
+            href="tel:+919490978692"
             className="px-6 py-3 bg-yellow-600 text-white rounded-xl shadow hover:opacity-90 transition"
           >
             📞 +91 9490978692
           </a>
           <a
-            href="mailto:quickpark1@gmail.com"
+            href="mailto:quickpark92@gmail.com"
             className="px-6 py-3 bg-yellow-700 text-white rounded-xl shadow hover:opacity-90 transition"
           >
             ✉️ quickpark92@gmail.com
@@ -60,7 +65,8 @@ export default function LandingPage() {
         >
           <h3 className="text-2xl font-bold text-yellow-700">Multi-Location</h3>
           <p className="mt-4 text-[#362706]">
-            Onboard multiple branches or venues under one platform with unique QR codes for each location.
+            Onboard multiple branches or venues under one platform with unique QR
+            codes for each location.
           </p>
         </motion.div>
 
@@ -72,7 +78,8 @@ export default function LandingPage() {
         >
           <h3 className="text-2xl font-bold text-yellow-700">Seamless Experience</h3>
           <p className="mt-4 text-[#362706]">
-            Guests scan a QR, enter details, and receive real-time updates on their car via WhatsApp.
+            Guests scan a QR, enter details, and receive real-time updates on
+            their car via WhatsApp.
           </p>
         </motion.div>
 
@@ -84,14 +91,31 @@ export default function LandingPage() {
         >
           <h3 className="text-2xl font-bold text-yellow-700">Payments & Insights</h3>
           <p className="mt-4 text-[#362706]">
-            Offer cash or online payments, track valet performance, and delight customers with efficiency.
+            Offer cash or online payments, track valet performance, and delight
+            customers with efficiency.
           </p>
         </motion.div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-[#F6EEE0] text-[#362706] text-sm text-center py-6">
-        © {new Date().getFullYear()} QuickPark. All rights reserved.
+      <footer className="bg-[#F6EEE0] text-[#362706] text-sm py-6 border-t">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 px-6">
+          <p>© {new Date().getFullYear()} QuickPark. All rights reserved.</p>
+          <div className="flex gap-6">
+            <Link to="/terms" className="hover:underline">
+              Terms & Conditions
+            </Link>
+            <Link to="/privacy" className="hover:underline">
+              Privacy Policy
+            </Link>
+            <Link to="/faq" className="hover:underline">
+              FAQ
+            </Link>
+            <Link to="/about" className="hover:underline">
+              About Us
+            </Link>
+          </div>
+        </div>
       </footer>
     </div>
   );
