@@ -27,12 +27,24 @@ export default function ValetDashboard() {
       }
 
       try {
-        const locationId = typeof user.locationId === "string" ? user.locationId : user.locationId.$oid;
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/locations/${locationId}`);
+        const locationId =
+          typeof user.locationId === "string" ? user.locationId : user.locationId.$oid;
+
+        // Fetch location
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/locations/${locationId}`
+        );
+        if (!res.data?.location) {
+          console.error("Location not found for ID:", locationId);
+          setLoading(false);
+          return;
+        }
         setLocation(res.data.location);
 
-        // Fetch initial tickets for this location
-        const ticketsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/tickets/location/${locationId}`);
+        // Fetch tickets for location
+        const ticketsRes = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/tickets/location/${locationId}`
+        );
         setTickets(ticketsRes.data.tickets || []);
       } catch (err) {
         console.error("Failed to fetch location or tickets:", err);
@@ -44,12 +56,24 @@ export default function ValetDashboard() {
     fetchLocation();
   }, [user]);
 
-  // Setup socket connection
+  // Setup WebSocket connection
   useEffect(() => {
     if (!location) return;
 
-    const socket = io(import.meta.env.VITE_API_URL_WS, { transports: ["websocket"] });
-    socket.emit("joinLocation", location._id);
+    // Use full /api prefix if your backend expects it
+    const socket = io(import.meta.env.VITE_API_URL_WS, {
+      path: "/socket.io",
+      transports: ["websocket"],
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("WebSocket connection error:", err);
+    });
+
+    socket.on("connect", () => {
+      console.log("WebSocket connected:", socket.id);
+      socket.emit("joinLocation", location._id);
+    });
 
     socket.on("ticket:created", (ticket) => {
       console.log("Ticket created:", ticket);
@@ -77,7 +101,10 @@ export default function ValetDashboard() {
 
   const handleUpdate = async (ticketId, updates) => {
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`, updates);
+      await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`,
+        updates
+      );
     } catch (err) {
       console.error("Error updating ticket:", err);
     }
@@ -90,7 +117,7 @@ export default function ValetDashboard() {
   const freeTickets = tickets.filter((t) => !location.paymentRequired);
 
   const renderTicketRow = (t) => {
-    const ticketId = t._id || t.ticketId || t.id || Math.random().toString(36).substring(7); // fallback
+    const ticketId = t._id || t.ticketId || t.id || Math.random().toString(36).substring(7);
     const phoneMasked = t.phone ? t.phone.replace(/.(?=.{4})/g, "*") : "N/A";
     const shortId = t.ticketShortId || (ticketId.length >= 6 ? ticketId.slice(-6) : ticketId);
 
