@@ -28,11 +28,11 @@ export default function ValetDashboard() {
 
       try {
         const locationId = typeof user.locationId === "string" ? user.locationId : user.locationId.$oid;
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/locations/${locationId}`);
+        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/locations/${locationId}`);
         setLocation(res.data.location);
 
         // Fetch initial tickets for this location
-        const ticketsRes = await axios.get(`${import.meta.env.VITE_API_URL}/tickets/location/${locationId}`);
+        const ticketsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/tickets/location/${locationId}`);
         setTickets(ticketsRes.data.tickets || []);
       } catch (err) {
         console.error("Failed to fetch location or tickets:", err);
@@ -77,7 +77,7 @@ export default function ValetDashboard() {
 
   const handleUpdate = async (ticketId, updates) => {
     try {
-      await axios.put(`${import.meta.env.VITE_API_URL}/tickets/${ticketId}/valet-update`, updates);
+      await axios.put(`${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`, updates);
     } catch (err) {
       console.error("Error updating ticket:", err);
     }
