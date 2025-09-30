@@ -38,7 +38,10 @@ export async function createTicketPublic(req, res) {
       notes: "Ticket created by public portal",
     });
 
-    await whatsappService.sendTemplate(phone, whatsappService.WhatsAppTemplates.ticketCreated(ticketShort, location.name));
+    await whatsappService.sendTemplate(
+      phone,
+      whatsappService.WhatsAppTemplates.ticketCreated(ticketShort, location.name)
+    );
 
     emitToLocation(location._id.toString(), "ticket:created", {
       ticketId: ticket._id,
@@ -107,7 +110,10 @@ export async function recallRequestPublic(req, res) {
         });
 
         emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
-        await whatsappService.sendTemplate(ticket.phone, whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId));
+        await whatsappService.sendTemplate(
+          ticket.phone,
+          whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
+        );
 
         return res.json({ ok: true, message: "Recall requested; pay at pickup (cash)" });
       } else {
@@ -127,7 +133,10 @@ export async function recallRequestPublic(req, res) {
       });
 
       emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
-      await whatsappService.sendTemplate(ticket.phone, whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId));
+      await whatsappService.sendTemplate(
+        ticket.phone,
+        whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
+      );
 
       return res.json({ ok: true, message: "Recall requested" });
     }
@@ -171,13 +180,23 @@ export async function valetUpdateTicket(req, res) {
 
     switch (ticket.status) {
       case STATUSES.PARKED:
-        await whatsappService.sendTemplate(ticket.phone, whatsappService.WhatsAppTemplates.carParked(ticket.vehicleNumber, "lot", ticket.etaMinutes || "N/A"));
+        await whatsappService.sendTemplate(
+          ticket.phone,
+          whatsappService.WhatsAppTemplates.carParked(
+            ticket.vehicleNumber,
+            "lot",
+            ticket.etaMinutes || "N/A"
+          )
+        );
         break;
       case STATUSES.READY_FOR_PICKUP:
         await whatsappService.sendTemplate(ticket.phone, whatsappService.WhatsAppTemplates.readyAtGate());
         break;
       case STATUSES.RECALLED:
-        await whatsappService.sendTemplate(ticket.phone, whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId));
+        await whatsappService.sendTemplate(
+          ticket.phone,
+          whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
+        );
         break;
       default:
         break;

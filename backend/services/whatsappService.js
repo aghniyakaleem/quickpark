@@ -1,45 +1,47 @@
-import Twilio from "twilio";
-
-// Read from environment variables injected by Vercel
+// services/whatsappService.js
 const {
-  TWILIO_ACCOUNT_SID,
-  TWILIO_AUTH_TOKEN,
-  TWILIO_WHATSAPP_FROM,
+  HIBOT_ACCESS_TOKEN,
+  HIBOT_PHONE_NUMBER_ID,
   BRAND_NAME = "QuickPark",
 } = process.env;
 
-// Initialize client only if creds exist
-let client = null;
-if (TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN) {
-  client = Twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-}
-
-function toWhatsAppAddress(phone) {
-  const cleaned = phone.replace(/\D/g, "");
-  if (cleaned.length === 10) {
-    return `whatsapp:+91${cleaned}`;
-  }
-  if (cleaned.startsWith("91") && cleaned.length >= 12) {
-    return `whatsapp:+${cleaned}`;
-  }
-  return `whatsapp:+${cleaned}`;
-}
-
 async function sendTemplate(phone, message) {
-  if (!client) {
-    console.warn("⚠️ Twilio client not configured; skipping WhatsApp send. Message:", message);
+  if (!HIBOT_ACCESS_TOKEN || !HIBOT_PHONE_NUMBER_ID) {
+    console.warn("⚠️ Hibot credentials missing; skipping WhatsApp send.");
     return;
   }
 
-  const to = toWhatsAppAddress(phone);
+  // Normalize phone number (assume India default +91)
+  let to = phone.replace(/\D/g, "");
+  if (to.length === 10) to = `91${to}`;
+  if (!to.startsWith("+")) to = `+${to}`;
+
   try {
-    await client.messages.create({
-      from: `whatsapp:${TWILIO_WHATSAPP_FROM}`,
-      to,
-      body: message,
-    });
+    const res = await fetch(
+      `https://graph.facebook.com/v17.0/${HIBOT_PHONE_NUMBER_ID}/messages`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${HIBOT_ACCESS_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messaging_product: "whatsapp",
+          to,
+          type: "text",
+          text: { body: message },
+        }),
+      }
+    );
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("❌ Hibot send failed:", data);
+    } else {
+      console.log("✅ WhatsApp message sent:", data);
+    }
   } catch (err) {
-    console.error("❌ WhatsApp send failed:", err.message || err);
+    console.error("❌ WhatsApp send error:", err.message || err);
   }
 }
 

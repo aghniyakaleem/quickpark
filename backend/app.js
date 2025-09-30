@@ -19,9 +19,12 @@ const app = express();
 app.use(express.json());
 app.use(morgan("dev"));
 app.use(cors({
-  origin: "http://localhost:3000",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true
+  origin: [
+    "https://quickpark.co.in",
+    "https://www.quickpark.co.in", // include both with and without www
+    "http://localhost:5173",       // keep localhost for dev
+  ],
+  credentials: true,
 }));
 
 // Routes
