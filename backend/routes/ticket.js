@@ -2,7 +2,8 @@ import express from "express";
 import { 
   createTicketPublic, 
   recallRequestPublic, 
-  valetUpdateTicket 
+  valetUpdateTicket, 
+  getTicketsByLocation
 } from "../controllers/ticketController.js";
 import { publicRateLimiter } from "../middleware/rateLimiter.js";
 import { body, param } from "express-validator";
@@ -37,9 +38,8 @@ router.post(
 );
 
 /**
- * Valet updates a ticket (vehicle number, ETA, parkedAt, status, payment)
+ * Valet updates a ticket
  * PUT /api/tickets/:ticketId/valet-update
- * body: { vehicleNumber, etaMinutes, parkedAt, status, paymentStatus, paymentProvider }
  */
 router.put(
   "/:ticketId/valet-update",
@@ -52,6 +52,17 @@ router.put(
   body("paymentProvider").optional().isString(),
   handleValidation,
   valetUpdateTicket
+);
+
+/**
+ * Valet fetch tickets by location
+ * GET /api/tickets/location/:locationId
+ */
+router.get(
+  "/location/:locationId",
+  param("locationId").isString().notEmpty(),
+  handleValidation,
+  getTicketsByLocation
 );
 
 export default router;

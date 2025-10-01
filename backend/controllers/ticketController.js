@@ -208,3 +208,22 @@ export async function valetUpdateTicket(req, res) {
     res.status(500).json({ message: "Internal server error" });
   }
 }
+export async function getTicketsByLocation(req, res) {
+  try {
+    const { locationId } = req.params;
+
+    const location = await Location.findById(locationId);
+    if (!location) {
+      return res.status(404).json({ message: "Location not found" });
+    }
+
+    const tickets = await Ticket.find({ locationId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.json({ tickets });
+  } catch (err) {
+    console.error("Error in getTicketsByLocation:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}

@@ -28,8 +28,9 @@ export default function ValetDashboard() {
 
       try {
         const locationId =
-          typeof user.locationId === "string" ? user.locationId : user.locationId.$oid;
-
+          typeof user.locationId === "string"
+            ? user.locationId
+            : user.locationId.$oid || user.locationId._id;
         // Fetch location
         const res = await axios.get(
           `${import.meta.env.VITE_API_URL}/api/locations/${locationId}`
@@ -55,7 +56,7 @@ export default function ValetDashboard() {
 
     fetchLocation();
   }, [user]);
-
+  
   // Setup WebSocket connection
   useEffect(() => {
     if (!location) return;
