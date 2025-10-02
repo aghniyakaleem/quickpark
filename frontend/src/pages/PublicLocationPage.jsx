@@ -34,12 +34,8 @@ export default function PublicLocationPage() {
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
-      // after setTicket(newTicket)
-if (newTicket.locationId) {
-  s.emit("joinLocation", newTicket.locationId);
-}
 
-      // Update WhatsApp window
+      // Update WhatsApp window with the new ticket
       const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
       whatsappWindow.location.href = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(message)}`;
 
@@ -52,7 +48,9 @@ if (newTicket.locationId) {
 
       s.on("connect", () => {
         console.log("Socket connected:", s.id);
-        if (newTicket.locationId) s.emit("joinLocation", newTicket.locationId);
+        if (newTicket.locationId) {
+          s.emit("joinLocation", newTicket.locationId);
+        }
       });
 
       s.on("ticket:updated", (updatedTicket) => {
