@@ -16,14 +16,6 @@ export default function PublicLocationPage() {
     if (value.length <= 10) setRawPhone(value);
   };
 
-  const openWhatsAppWithTicketID = (ticketId) => {
-    const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER;
-    const whatsappUrl = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(
-      `Hi QuickPark, my ticket ID is ${ticketId}`
-    )}`;
-    window.open(whatsappUrl, "_blank");
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (rawPhone.length !== 10) {
@@ -33,14 +25,19 @@ export default function PublicLocationPage() {
 
     setLoading(true);
 
+    // 🌟 Open a blank WhatsApp window immediately to avoid popup blocking
+    const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER;
+    const whatsappWindow = window.open("about:blank", "_blank");
+
     try {
       // Generate ticket
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
 
-      // Automatically open WhatsApp with the ticket ID
-      openWhatsAppWithTicketID(newTicket.ticketShortId);
+      // Update the previously opened window to the correct WhatsApp URL
+      const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
+      whatsappWindow.location.href = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(message)}`;
 
       // Initialize Socket connection
       const s = io(import.meta.env.VITE_API_URL_WS, {
@@ -68,6 +65,8 @@ export default function PublicLocationPage() {
     } catch (err) {
       console.error(err.response?.data || err.message);
       alert(err.response?.data?.message || "Failed to create ticket ❌");
+      // Close the blank window if ticket creation failed
+      whatsappWindow.close();
     } finally {
       setLoading(false);
     }
