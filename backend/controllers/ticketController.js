@@ -1,4 +1,3 @@
-// controllers/ticketController.js
 import Ticket from "../models/Ticket.js";
 import Location from "../models/Location.js";
 import StatusLog from "../models/StatusLog.js";
@@ -7,10 +6,7 @@ import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import shortId from "shortid";
 
-/**
- * Public: create ticket from location slug
- * POST /api/tickets/public/:slug
- */
+// Public ticket creation
 export async function createTicketPublic(req, res) {
   try {
     const { slug } = req.params;
@@ -26,7 +22,7 @@ export async function createTicketPublic(req, res) {
     const ticket = await Ticket.create({
       ticketShortId: ticketShort,
       locationId: location._id,
-      phone,
+      phone: phone.replace(/\D/g, ""), // normalize
       status: STATUSES.AWAITING_VEHICLE_NUMBER,
     });
 
@@ -39,14 +35,14 @@ export async function createTicketPublic(req, res) {
     });
 
     await whatsappService.sendTemplate(
-      phone,
+      ticket.phone,
       whatsappService.WhatsAppTemplates.ticketCreated(ticketShort, location.name)
     );
 
     emitToLocation(location._id.toString(), "ticket:created", {
       ticketId: ticket._id,
       shortId: ticketShort,
-      phone,
+      phone: ticket.phone,
       status: ticket.status,
     });
 
@@ -54,6 +50,7 @@ export async function createTicketPublic(req, res) {
       ticket: {
         id: ticket._id,
         ticketShortId: ticketShort,
+        locationId: location._id,
         publicUrl: `${process.env.PUBLIC_URL}/l/${location.slug}`,
       },
     });
@@ -63,14 +60,11 @@ export async function createTicketPublic(req, res) {
   }
 }
 
-/**
- * Public: recall flow initiation
- * POST /api/tickets/public/:slug/recall
- */
+// Public recall
 export async function recallRequestPublic(req, res) {
   try {
     const { slug } = req.params;
-    const { ticketShortId, payMode } = req.body;
+    const { ticketShortId } = req.body;
 
     if (!ticketShortId) return res.status(422).json({ message: "ticketShortId required" });
 
@@ -80,76 +74,32 @@ export async function recallRequestPublic(req, res) {
     const ticket = await Ticket.findOne({ ticketShortId, locationId: location._id });
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    const previousStatus = ticket.status;
+    ticket.status = STATUSES.RECALLED;
+    await ticket.save();
 
-    if (location.paymentRequired) {
-      if (!payMode) return res.status(422).json({ message: "payMode required for paid locations" });
+    await StatusLog.create({
+      ticketId: ticket._id,
+      from: ticket.status,
+      to: STATUSES.RECALLED,
+      actor: "PUBLIC",
+      notes: "Recall requested",
+    });
 
-      if (payMode === "ONLINE") {
-        const amount = 50;
-        const { createRazorpayOrder } = await import("../services/paymentService.js");
-        const order = await createRazorpayOrder(amount, "INR", `ticket_${ticket._id}`);
+    emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
 
-        ticket.paymentProvider = "RAZORPAY";
-        ticket.paymentMeta = { order };
-        await ticket.save();
+    await whatsappService.sendTemplate(
+      ticket.phone,
+      whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
+    );
 
-        return res.json({ payment: { provider: "RAZORPAY", order } });
-
-      } else if (payMode === "CASH") {
-        ticket.paymentStatus = PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY;
-        ticket.recall = true;
-        await ticket.save();
-
-        await StatusLog.create({
-          ticketId: ticket._id,
-          from: previousStatus,
-          to: STATUSES.RECALLED,
-          actor: "PUBLIC",
-          notes: "Recall requested (cash on delivery)",
-        });
-
-        emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
-        await whatsappService.sendTemplate(
-          ticket.phone,
-          whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
-        );
-
-        return res.json({ ok: true, message: "Recall requested; pay at pickup (cash)" });
-      } else {
-        return res.status(422).json({ message: "Invalid payMode" });
-      }
-    } else {
-      // Free model
-      ticket.recall = true;
-      await ticket.save();
-
-      await StatusLog.create({
-        ticketId: ticket._id,
-        from: previousStatus,
-        to: STATUSES.RECALLED,
-        actor: "PUBLIC",
-        notes: "Recall requested (free model)",
-      });
-
-      emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
-      await whatsappService.sendTemplate(
-        ticket.phone,
-        whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
-      );
-
-      return res.json({ ok: true, message: "Recall requested" });
-    }
+    res.json({ ok: true, message: "Recall requested" });
   } catch (err) {
     console.error("Error in recallRequestPublic:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 }
 
-/**
- * Valet updates ticket (vehicle number, ETA, status, payment)
- * PUT /api/tickets/:ticketId/valet-update
- */
+// Valet updates ticket
 export async function valetUpdateTicket(req, res) {
   try {
     const { ticketId } = req.params;
@@ -178,15 +128,12 @@ export async function valetUpdateTicket(req, res) {
 
     emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
 
+    // Send WhatsApp updates based on status
     switch (ticket.status) {
       case STATUSES.PARKED:
         await whatsappService.sendTemplate(
           ticket.phone,
-          whatsappService.WhatsAppTemplates.carParked(
-            ticket.vehicleNumber,
-            "lot",
-            ticket.etaMinutes || "N/A"
-          )
+          whatsappService.WhatsAppTemplates.carParked(ticket.vehicleNumber, "lot", ticket.etaMinutes || "N/A")
         );
         break;
       case STATUSES.READY_FOR_PICKUP:
@@ -198,29 +145,22 @@ export async function valetUpdateTicket(req, res) {
           whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
         );
         break;
-      default:
-        break;
     }
 
-    res.json({ ok: true, ticket });
+    return { ticket };
   } catch (err) {
     console.error("Error in valetUpdateTicket:", err);
-    res.status(500).json({ message: "Internal server error" });
+    throw err;
   }
 }
+
+// Fetch all tickets by location
 export async function getTicketsByLocation(req, res) {
   try {
     const { locationId } = req.params;
+    if (!locationId) return res.status(400).json({ message: "Location ID required" });
 
-    const location = await Location.findById(locationId);
-    if (!location) {
-      return res.status(404).json({ message: "Location not found" });
-    }
-
-    const tickets = await Ticket.find({ locationId })
-      .sort({ createdAt: -1 })
-      .lean();
-
+    const tickets = await Ticket.find({ locationId }).sort({ createdAt: -1 }).lean();
     res.json({ tickets });
   } catch (err) {
     console.error("Error in getTicketsByLocation:", err);

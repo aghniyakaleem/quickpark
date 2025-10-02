@@ -30,6 +30,12 @@ export default function PublicLocationPage() {
       const newTicket = res.data.ticket;
       setTicket(newTicket);
 
+      // 🌟 Redirect to WhatsApp so user initiates conversation
+      const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER; // set in .env
+      const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
+      const whatsappUrl = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(message)}`;
+      window.open(whatsappUrl, "_blank");
+
       // Initialize Socket connection for this ticket
       const s = io(import.meta.env.VITE_API_URL_WS, {
         path: "/socket.io",
@@ -39,7 +45,6 @@ export default function PublicLocationPage() {
 
       s.on("connect", () => {
         console.log("Socket connected:", s.id);
-        // Join location room
         if (newTicket.locationId) s.emit("joinLocation", newTicket.locationId);
       });
 
@@ -62,7 +67,6 @@ export default function PublicLocationPage() {
     }
   };
 
-  // Disconnect socket when component unmounts
   useEffect(() => () => socket?.disconnect(), [socket]);
 
   return (

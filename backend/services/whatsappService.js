@@ -1,4 +1,3 @@
-// services/whatsappService.js
 const {
   HIBOT_ACCESS_TOKEN,
   HIBOT_PHONE_NUMBER_ID,
@@ -11,7 +10,6 @@ async function sendTemplate(phone, message) {
     return;
   }
 
-  // Normalize phone number (assume India default +91)
   let to = phone.replace(/\D/g, "");
   if (to.length === 10) to = `91${to}`;
   if (!to.startsWith("+")) to = `+${to}`;
