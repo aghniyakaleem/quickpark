@@ -11,11 +11,17 @@ export default function PublicLocationPage() {
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState(null);
 
-  const getDisplayValue = () => (rawPhone ? "+91 " + rawPhone : "+91 ");
-
   const handlePhoneChange = (e) => {
     const value = e.target.value.replace(/\D/g, "");
     if (value.length <= 10) setRawPhone(value);
+  };
+
+  const openWhatsAppWithTicketID = (ticketId) => {
+    const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER;
+    const whatsappUrl = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(
+      `Hi QuickPark, my ticket ID is ${ticketId}`
+    )}`;
+    window.open(whatsappUrl, "_blank");
   };
 
   const handleSubmit = async (e) => {
@@ -24,19 +30,19 @@ export default function PublicLocationPage() {
       alert("Please enter a valid 10-digit Indian phone number 📱");
       return;
     }
+
     setLoading(true);
+
     try {
+      // Generate ticket
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
 
-      // 🌟 Redirect to WhatsApp so user initiates conversation
-      const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER; // set in .env
-      const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
-      const whatsappUrl = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(message)}`;
-      window.open(whatsappUrl, "_blank");
+      // Automatically open WhatsApp with the ticket ID
+      openWhatsAppWithTicketID(newTicket.ticketShortId);
 
-      // Initialize Socket connection for this ticket
+      // Initialize Socket connection
       const s = io(import.meta.env.VITE_API_URL_WS, {
         path: "/socket.io",
         transports: ["websocket"],
