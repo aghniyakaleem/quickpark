@@ -20,7 +20,12 @@ export const initSocket = (server) => {
 
   io.on("connection", (socket) => {
     console.log("🔌 New socket connected:", socket.id);
-
+  
+    socket.on("joinLocation", (locationId) => {
+      socket.join(locationId);
+      console.log(`Socket ${socket.id} joined location room ${locationId}`);
+    });
+  
     socket.on("disconnect", () => {
       console.log("❌ Socket disconnected:", socket.id);
     });

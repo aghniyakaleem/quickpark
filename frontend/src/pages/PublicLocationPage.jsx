@@ -34,6 +34,10 @@ export default function PublicLocationPage() {
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
+      // after setTicket(newTicket)
+if (newTicket.locationId) {
+  s.emit("joinLocation", newTicket.locationId);
+}
 
       // Update WhatsApp window
       const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
