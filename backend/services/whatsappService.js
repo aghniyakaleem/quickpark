@@ -4,7 +4,7 @@ const {
   BRAND_NAME = "QuickPark",
 } = process.env;
 
-async function sendTemplate(phone, message) {
+async function sendTemplate(phone, message, buttons = null) {
   if (!HIBOT_ACCESS_TOKEN || !HIBOT_PHONE_NUMBER_ID) {
     console.warn("⚠️ Hibot credentials missing; skipping WhatsApp send.");
     return;
@@ -15,6 +15,20 @@ async function sendTemplate(phone, message) {
   if (!to.startsWith("+")) to = `+${to}`;
 
   try {
+    const body = { messaging_product: "whatsapp", to };
+
+    if (buttons) {
+      body.type = "interactive";
+      body.interactive = {
+        type: "button",
+        body: { text: message },
+        action: { buttons },
+      };
+    } else {
+      body.type = "text";
+      body.text = { body: message };
+    }
+
     const res = await fetch(
       `https://graph.facebook.com/v17.0/${HIBOT_PHONE_NUMBER_ID}/messages`,
       {
@@ -23,12 +37,7 @@ async function sendTemplate(phone, message) {
           Authorization: `Bearer ${HIBOT_ACCESS_TOKEN}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          to,
-          type: "text",
-          text: { body: message },
-        }),
+        body: JSON.stringify(body),
       }
     );
 
@@ -45,16 +54,28 @@ async function sendTemplate(phone, message) {
 
 export const WhatsAppTemplates = {
   ticketCreated: (ticketId, locationName) =>
-    `${BRAND_NAME}: Your ticket ${ticketId} at ${locationName} is created. Reply or wait for updates.`,
-  carParked: (vehicleNumber, parkedAt, eta) =>
-    `${BRAND_NAME}: Your car ${vehicleNumber} is parked at ${parkedAt}. It is approximately ${eta} minutes away.`,
-  recallReceived: (ticketId) =>
-    `${BRAND_NAME}: Your recall request for ticket ${ticketId} has been received. Valet will prepare your car.`,
-  etaX: (x) => `${BRAND_NAME}: Your car will be ready in ${x} minutes.`,
-  readyAtGate: () => `${BRAND_NAME}: Your car is at the gate now.`,
-  dropped: () => `${BRAND_NAME}: Car delivered. Thank you for using ${BRAND_NAME}.`,
+    `Welcome to ${locationName}!\n🎟️ Your ticket ${ticketId} has been created. Our valet will pick up your car shortly.`,
+
+  carPicked: () =>
+    `🚗 The valet has picked up your car. We’ll update you once it is parked.`,
+
+  carParked: (vehicleNumber, eta) =>
+    `✅ Your car *${vehicleNumber}* has been parked. It is approximately ${eta} minutes away. You can recall it anytime.`,
+
+  recallRequest: (vehicleNumber, eta) =>
+    `🔔 Recall request received for car *${vehicleNumber}*.\nYour car will be ready in about ${eta} minutes.`,
+
+  readyForPickup: () =>
+    `🚘 Your car is at the gate now. The valet will wait 2 minutes before re-parking to avoid traffic.`,
+
+  delivered: () =>
+    `🎉 Car delivered! Thank you for using ${BRAND_NAME}. We hope to serve you again.`,
+
+  paymentRequest: (amount, ticketId) =>
+    `💰 Please make the payment of ₹${amount} for ticket ${ticketId}.\nChoose an option below:`,
+
   paymentConfirmation: (ticketId) =>
-    `${BRAND_NAME}: Payment received for ticket ${ticketId}. Thank you.`,
+    `✅ Payment received for ticket ${ticketId}. Thank you!`,
 };
 
 export default {

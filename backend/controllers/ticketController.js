@@ -1,7 +1,7 @@
 import Ticket from "../models/Ticket.js";
 import Location from "../models/Location.js";
 import StatusLog from "../models/StatusLog.js";
-import whatsappService from "../services/whatsappService.js";
+import whatsappService, { WhatsAppTemplates } from "../services/whatsappService.js";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import shortId from "shortid";
@@ -22,7 +22,7 @@ export async function createTicketPublic(req, res) {
     const ticket = await Ticket.create({
       ticketShortId: ticketShort,
       locationId: location._id,
-      phone: phone.replace(/\D/g, ""), // normalize
+      phone: phone.replace(/\D/g, ""),
       status: STATUSES.AWAITING_VEHICLE_NUMBER,
     });
 
@@ -34,9 +34,15 @@ export async function createTicketPublic(req, res) {
       notes: "Ticket created by public portal",
     });
 
+    // Send ticket created + picked up messages
     await whatsappService.sendTemplate(
       ticket.phone,
-      whatsappService.WhatsAppTemplates.ticketCreated(ticketShort, location.name)
+      WhatsAppTemplates.ticketCreated(ticketShort, location.name)
+    );
+
+    await whatsappService.sendTemplate(
+      ticket.phone,
+      WhatsAppTemplates.carPicked()
     );
 
     emitToLocation(location._id.toString(), "ticket:created", {
@@ -60,11 +66,11 @@ export async function createTicketPublic(req, res) {
   }
 }
 
-// Public recall
+// Recall request from user (via WhatsApp button)
 export async function recallRequestPublic(req, res) {
   try {
     const { slug } = req.params;
-    const { ticketShortId } = req.body;
+    const { ticketShortId, button } = req.body;
 
     if (!ticketShortId) return res.status(422).json({ message: "ticketShortId required" });
 
@@ -74,12 +80,40 @@ export async function recallRequestPublic(req, res) {
     const ticket = await Ticket.findOne({ ticketShortId, locationId: location._id });
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
+    // Payment flow
+    if (location.paymentRequired && ticket.paymentStatus === PAYMENT_STATUSES.UNPAID) {
+      if (button === "pay_online") {
+        ticket.paymentStatus = PAYMENT_STATUSES.PAID;
+        await ticket.save();
+        await whatsappService.sendTemplate(ticket.phone, WhatsAppTemplates.paymentConfirmation(ticket.ticketShortId));
+        // continue recall flow
+      } else if (button === "pay_cash") {
+        ticket.paymentStatus = PAYMENT_STATUSES.UNPAID;
+        await ticket.save();
+        await whatsappService.sendTemplate(ticket.phone, `💰 Please pay ₹${location.paymentAmount || 20} to the valet. Your car will be ready shortly.`);
+        // continue recall flow
+      } else {
+        // Send payment request
+        await whatsappService.sendTemplate(
+          ticket.phone,
+          WhatsAppTemplates.paymentRequest(location.paymentAmount || 20, ticket.ticketShortId),
+          [
+            { type: "reply", reply: { id: "pay_online", title: "Pay Online" } },
+            { type: "reply", reply: { id: "pay_cash", title: "Pay Cash to Valet" } },
+          ]
+        );
+        return res.json({ ok: true, message: "Payment requested" });
+      }
+    }
+
+    // Normal recall flow
+    const prevStatus = ticket.status;
     ticket.status = STATUSES.RECALLED;
     await ticket.save();
 
     await StatusLog.create({
       ticketId: ticket._id,
-      from: ticket.status,
+      from: prevStatus,
       to: STATUSES.RECALLED,
       actor: "PUBLIC",
       notes: "Recall requested",
@@ -89,7 +123,7 @@ export async function recallRequestPublic(req, res) {
 
     await whatsappService.sendTemplate(
       ticket.phone,
-      whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
+      WhatsAppTemplates.recallRequest(ticket.vehicleNumber || "your car", ticket.etaMinutes || "few")
     );
 
     res.json({ ok: true, message: "Recall requested" });
@@ -128,22 +162,31 @@ export async function valetUpdateTicket(req, res) {
 
     emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
 
-    // Send WhatsApp updates based on status
+    // WhatsApp updates per valet status
     switch (ticket.status) {
       case STATUSES.PARKED:
         await whatsappService.sendTemplate(
           ticket.phone,
-          whatsappService.WhatsAppTemplates.carParked(ticket.vehicleNumber, "lot", ticket.etaMinutes || "N/A")
+          WhatsAppTemplates.carParked(ticket.vehicleNumber, ticket.etaMinutes || "N/A"),
+          [
+            { type: "reply", reply: { id: "recall_car", title: "Recall Car" } },
+          ]
         );
         break;
-      case STATUSES.READY_FOR_PICKUP:
-        await whatsappService.sendTemplate(ticket.phone, whatsappService.WhatsAppTemplates.readyAtGate());
-        break;
+
       case STATUSES.RECALLED:
         await whatsappService.sendTemplate(
           ticket.phone,
-          whatsappService.WhatsAppTemplates.recallReceived(ticket.ticketShortId)
+          WhatsAppTemplates.recallRequest(ticket.vehicleNumber, ticket.etaMinutes || "few")
         );
+        break;
+
+      case STATUSES.READY_FOR_PICKUP:
+        await whatsappService.sendTemplate(ticket.phone, WhatsAppTemplates.readyForPickup());
+        break;
+
+      case STATUSES.DELIVERED:
+        await whatsappService.sendTemplate(ticket.phone, WhatsAppTemplates.delivered());
         break;
     }
 

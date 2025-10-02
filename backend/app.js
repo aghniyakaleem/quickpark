@@ -1,3 +1,4 @@
+// app.js
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -15,19 +16,17 @@ import locationRoutes from "./routes/location.js";
 
 const app = express();
 
-// Middleware
 app.use(express.json());
 app.use(morgan("dev"));
 app.use(cors({
   origin: [
     "https://quickpark.co.in",
-    "https://www.quickpark.co.in", // include both with and without www
-    "http://localhost:5173",       // keep localhost for dev
+    "https://www.quickpark.co.in",
+    "http://localhost:5173",
   ],
   credentials: true,
 }));
 
-// Routes
 app.use("/api/locations", locationRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
@@ -36,7 +35,6 @@ app.use("/api/valet", valetRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/webhooks", webhookRoutes);
 
-// Health check
 app.get("/health", (req, res) => res.json({ ok: true, time: new Date() }));
 
 export default app;

@@ -14,8 +14,8 @@ export const initSocket = (server) => {
       methods: ["GET", "POST"],
       credentials: true,
     },
-    transports: ["websocket", "polling"], // allow fallback
-    path: "/socket.io", // IMPORTANT: match default path
+    transports: ["websocket", "polling"], 
+    path: "/socket.io", 
   });
 
   io.on("connection", (socket) => {
@@ -35,6 +35,7 @@ export const getIO = () => {
   }
   return io;
 };
+
 export const emitToLocation = (locationId, event, data) => {
   if (!io) {
     console.error("Socket.io not initialized");

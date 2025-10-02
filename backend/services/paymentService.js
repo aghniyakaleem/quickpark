@@ -1,3 +1,4 @@
+// services/paymentService.js
 import Razorpay from "razorpay";
 import dotenv from "dotenv";
 dotenv.config();
@@ -26,7 +27,7 @@ export async function createRazorpayOrder(amountInRupees, currency = "INR", rece
   return order;
 }
 
-export function verifyRazorpaySignature(body, signature, secret) {
+export async function verifyRazorpaySignature(body, signature, secret) {
   const crypto = await import("crypto");
   const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
   return expected === signature;

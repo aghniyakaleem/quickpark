@@ -25,21 +25,21 @@ export default function PublicLocationPage() {
 
     setLoading(true);
 
-    // 🌟 Open a blank WhatsApp window immediately to avoid popup blocking
+    // 🌟 Open blank WhatsApp window immediately
     const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER;
     const whatsappWindow = window.open("about:blank", "_blank");
 
     try {
-      // Generate ticket
+      // Create ticket
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
 
-      // Update the previously opened window to the correct WhatsApp URL
+      // Update WhatsApp window
       const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
       whatsappWindow.location.href = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(message)}`;
 
-      // Initialize Socket connection
+      // Initialize Socket.IO
       const s = io(import.meta.env.VITE_API_URL_WS, {
         path: "/socket.io",
         transports: ["websocket"],
@@ -65,7 +65,6 @@ export default function PublicLocationPage() {
     } catch (err) {
       console.error(err.response?.data || err.message);
       alert(err.response?.data?.message || "Failed to create ticket ❌");
-      // Close the blank window if ticket creation failed
       whatsappWindow.close();
     } finally {
       setLoading(false);

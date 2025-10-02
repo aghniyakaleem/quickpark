@@ -1,3 +1,4 @@
+// models/Ticket.js
 import mongoose from "mongoose";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 
