@@ -35,11 +35,13 @@ export async function createTicketPublic(req, res) {
     });
 
     // Send ticket created + picked up messages
+    console.log("📩 Sending WhatsApp: ticketCreated");
     await whatsappService.sendTemplate(
       ticket.phone,
       WhatsAppTemplates.ticketCreated(ticketShort, location.name)
     );
 
+    console.log("📩 Sending WhatsApp: carPicked");
     await whatsappService.sendTemplate(
       ticket.phone,
       WhatsAppTemplates.carPicked()
@@ -85,15 +87,16 @@ export async function recallRequestPublic(req, res) {
       if (button === "pay_online") {
         ticket.paymentStatus = PAYMENT_STATUSES.PAID;
         await ticket.save();
+        console.log("📩 Sending WhatsApp: paymentConfirmation");
         await whatsappService.sendTemplate(ticket.phone, WhatsAppTemplates.paymentConfirmation(ticket.ticketShortId));
-        // continue recall flow
       } else if (button === "pay_cash") {
         ticket.paymentStatus = PAYMENT_STATUSES.UNPAID;
         await ticket.save();
+        console.log("📩 Sending WhatsApp: pay_cash message");
         await whatsappService.sendTemplate(ticket.phone, `💰 Please pay ₹${location.paymentAmount || 20} to the valet. Your car will be ready shortly.`);
-        // continue recall flow
       } else {
         // Send payment request
+        console.log("📩 Sending WhatsApp: paymentRequest");
         await whatsappService.sendTemplate(
           ticket.phone,
           WhatsAppTemplates.paymentRequest(location.paymentAmount || 20, ticket.ticketShortId),
@@ -121,6 +124,7 @@ export async function recallRequestPublic(req, res) {
 
     emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
 
+    console.log("📩 Sending WhatsApp: recallRequest");
     await whatsappService.sendTemplate(
       ticket.phone,
       WhatsAppTemplates.recallRequest(ticket.vehicleNumber || "your car", ticket.etaMinutes || "few")
@@ -165,6 +169,7 @@ export async function valetUpdateTicket(req, res) {
     // WhatsApp updates per valet status
     switch (ticket.status) {
       case STATUSES.PARKED:
+        console.log("📩 Sending WhatsApp: carParked");
         await whatsappService.sendTemplate(
           ticket.phone,
           WhatsAppTemplates.carParked(ticket.vehicleNumber, ticket.etaMinutes || "N/A"),
@@ -175,6 +180,7 @@ export async function valetUpdateTicket(req, res) {
         break;
 
       case STATUSES.RECALLED:
+        console.log("📩 Sending WhatsApp: recallRequest");
         await whatsappService.sendTemplate(
           ticket.phone,
           WhatsAppTemplates.recallRequest(ticket.vehicleNumber, ticket.etaMinutes || "few")
@@ -182,18 +188,21 @@ export async function valetUpdateTicket(req, res) {
         break;
 
       case STATUSES.READY_FOR_PICKUP:
+        console.log("📩 Sending WhatsApp: readyForPickup");
         await whatsappService.sendTemplate(ticket.phone, WhatsAppTemplates.readyForPickup());
         break;
 
       case STATUSES.DELIVERED:
+        console.log("📩 Sending WhatsApp: delivered");
         await whatsappService.sendTemplate(ticket.phone, WhatsAppTemplates.delivered());
         break;
     }
 
-    return { ticket };
+    // ✅ FIX: respond with JSON
+    res.json({ ticket });
   } catch (err) {
     console.error("Error in valetUpdateTicket:", err);
-    throw err;
+    res.status(500).json({ message: "Internal server error" });
   }
 }
 
