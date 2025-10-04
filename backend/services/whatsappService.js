@@ -4,30 +4,39 @@ const {
   BRAND_NAME = "QuickPark",
 } = process.env;
 
-async function sendTemplate(phone, message, buttons = null) {
+/**
+ * Send an approved WhatsApp template message via Hibot / Meta API
+ * @param {string} phone - Recipient phone number (with or without +91)
+ * @param {string} templateName - Template name in Hibot (e.g. "ticket_created")
+ * @param {Array} components - Placeholder values (e.g. ["QuickPark", "QP1234"])
+ */
+async function sendWhatsAppTemplate(phone, templateName, components = []) {
   if (!HIBOT_ACCESS_TOKEN || !HIBOT_PHONE_NUMBER_ID) {
     console.warn("⚠️ Hibot credentials missing; skipping WhatsApp send.");
     return;
   }
 
+  // sanitize phone number
   let to = phone.replace(/\D/g, "");
   if (to.length === 10) to = `91${to}`;
   if (!to.startsWith("+")) to = `+${to}`;
 
   try {
-    const body = { messaging_product: "whatsapp", to };
-
-    if (buttons) {
-      body.type = "interactive";
-      body.interactive = {
-        type: "button",
-        body: { text: message },
-        action: { buttons },
-      };
-    } else {
-      body.type = "text";
-      body.text = { body: message };
-    }
+    const body = {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: templateName, // must exactly match your approved template name
+        language: { code: "en" },
+        components: [
+          {
+            type: "body",
+            parameters: components.map((value) => ({ type: "text", text: String(value) })),
+          },
+        ],
+      },
+    };
 
     const res = await fetch(
       `https://graph.facebook.com/v17.0/${HIBOT_PHONE_NUMBER_ID}/messages`,
@@ -43,42 +52,40 @@ async function sendTemplate(phone, message, buttons = null) {
 
     const data = await res.json();
     if (!res.ok) {
-      console.error("❌ Hibot send failed:", data);
+      console.error(`❌ WhatsApp template "${templateName}" failed:`, data);
     } else {
-      console.log("✅ WhatsApp message sent:", data);
+      console.log(`✅ WhatsApp template "${templateName}" sent:`, data);
     }
   } catch (err) {
     console.error("❌ WhatsApp send error:", err.message || err);
   }
 }
 
-export const WhatsAppTemplates = {
-  ticketCreated: (ticketId, locationName) =>
-    `Welcome to ${locationName}!\n🎟️ Your ticket ${ticketId} has been created. Our valet will pick up your car shortly.`,
+// Helper wrappers for your valet app flow
+export const WhatsAppService = {
+  ticketCreated: (phone, ticketId, locationName) =>
+    sendWhatsAppTemplate(phone, "ticket_created", [locationName, ticketId]),
 
-  carPicked: () =>
-    `🚗 The valet has picked up your car. We’ll update you once it is parked.`,
+  carPicked: (phone) =>
+    sendWhatsAppTemplate(phone, "car_picked"),
 
-  carParked: (vehicleNumber, eta) =>
-    `✅ Your car *${vehicleNumber}* has been parked. It is approximately ${eta} minutes away. You can recall it anytime.`,
+  carParked: (phone, vehicleNumber, eta) =>
+    sendWhatsAppTemplate(phone, "car_parked", [vehicleNumber, eta]),
 
-  recallRequest: (vehicleNumber, eta) =>
-    `🔔 Recall request received for car *${vehicleNumber}*.\nYour car will be ready in about ${eta} minutes.`,
+  recallRequest: (phone, vehicleNumber, eta) =>
+    sendWhatsAppTemplate(phone, "recall_request", [vehicleNumber, eta]),
 
-  readyForPickup: () =>
-    `🚘 Your car is at the gate now. The valet will wait 2 minutes before re-parking to avoid traffic.`,
+  readyForPickup: (phone) =>
+    sendWhatsAppTemplate(phone, "ready_for_pickup"),
 
-  delivered: () =>
-    `🎉 Car delivered! Thank you for using ${BRAND_NAME}. We hope to serve you again.`,
+  delivered: (phone) =>
+    sendWhatsAppTemplate(phone, "delivered", [BRAND_NAME]),
 
-  paymentRequest: (amount, ticketId) =>
-    `💰 Please make the payment of ₹${amount} for ticket ${ticketId}.\nChoose an option below:`,
+  paymentRequest: (phone, amount, ticketId) =>
+    sendWhatsAppTemplate(phone, "payment_request", [amount, ticketId]),
 
-  paymentConfirmation: (ticketId) =>
-    `✅ Payment received for ticket ${ticketId}. Thank you!`,
+  paymentConfirmation: (phone, ticketId) =>
+    sendWhatsAppTemplate(phone, "payment_confirmation", [ticketId]),
 };
 
-export default {
-  sendTemplate,
-  WhatsAppTemplates,
-};
+export default WhatsAppService;
