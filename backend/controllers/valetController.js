@@ -20,21 +20,48 @@ function allowedTransition(current, next) {
   return allowed.includes(next);
 }
 
-// ✅ Car parked
+/**
+ * Get tickets for valet
+ */
+export async function getTicketsForValet(req, res) {
+  const locationId = req.user.locationId;
+  if (!locationId) return res.status(403).json({ message: "Valet not assigned" });
+  const { q, status, recall } = req.query;
+
+  const filter = { locationId };
+  if (status) filter.status = status;
+  if (typeof recall !== "undefined") filter.recall = recall === "true";
+  if (q) {
+    const regex = new RegExp(q, "i");
+    filter.$or = [{ phone: regex }, { vehicleNumber: regex }, { ticketShortId: regex }];
+  }
+
+  const tickets = await Ticket.find(filter).sort({ createdAt: -1 }).lean();
+  res.json({ tickets });
+}
+
+/**
+ * Valet sets vehicle number and parks ticket
+ */
 export async function setVehicleAndPark(req, res) {
   const { ticketId } = req.params;
   const { vehicleNumber, parkedAt, eta } = req.body;
   const valet = req.user;
+
   const ticket = await Ticket.findById(ticketId);
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+  if (ticket.locationId.toString() !== valet.locationId.toString())
+    return res.status(403).json({ message: "Not authorized for this ticket" });
 
   ticket.vehicleNumber = vehicleNumber || ticket.vehicleNumber;
   ticket.parkedAt = parkedAt || ticket.parkedAt;
   ticket.status = STATUSES.PARKED;
-  if (eta && [2,5,10].includes(Number(eta))) {
+  if (eta && [2, 5, 10].includes(Number(eta))) {
     ticket.etaMinutes = Number(eta);
-    ticket.status = {2: STATUSES.ETA_2,5: STATUSES.ETA_5,10: STATUSES.ETA_10}[Number(eta)] || ticket.status;
+    ticket.status = { 2: STATUSES.ETA_2, 5: STATUSES.ETA_5, 10: STATUSES.ETA_10 }[Number(eta)] || ticket.status;
   }
+
   await ticket.save();
 
   await StatusLog.create({
@@ -45,27 +72,35 @@ export async function setVehicleAndPark(req, res) {
     notes: `Parked by valet ${valet.email}`
   });
 
-  // ✅ Send Hibot template: car_parked
-  await whatsappService.sendTemplate(ticket.phone, "car_parked", [
-    ticket.vehicleNumber || "N/A",
-    ticket.etaMinutes || "0"
-  ]);
+  // WhatsApp send
+  try {
+    await whatsappService.carParked(ticket.phone, ticket.vehicleNumber || "N/A", ticket.etaMinutes || 0);
+  } catch (err) {
+    console.error("WhatsApp send failed:", err.message);
+  }
 
   emitToLocation(ticket.locationId.toString(), "ticket:updated", { ticketId: ticket._id, status: ticket.status });
   res.json({ ticket });
 }
 
-// ✅ ETA update
+/**
+ * Valet sets ETA
+ */
 export async function setEta(req, res) {
   const { ticketId } = req.params;
   const { eta } = req.body;
   const valet = req.user;
+
   const ticket = await Ticket.findById(ticketId);
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
+  if (ticket.locationId.toString() !== valet.locationId.toString())
+    return res.status(403).json({ message: "Not authorized for this ticket" });
+
   const current = ticket.status;
-  const toStatus = {2: STATUSES.ETA_2,5: STATUSES.ETA_5,10: STATUSES.ETA_10}[Number(eta)];
-  if (!allowedTransition(current, toStatus)) return res.status(422).json({ message: `Cannot set ETA from ${current}` });
+  const toStatus = { 2: STATUSES.ETA_2, 5: STATUSES.ETA_5, 10: STATUSES.ETA_10 }[Number(eta)];
+  if (!allowedTransition(current, toStatus))
+    return res.status(422).json({ message: `Cannot set ETA from ${current}` });
 
   ticket.etaMinutes = Number(eta);
   ticket.status = toStatus;
@@ -79,50 +114,75 @@ export async function setEta(req, res) {
     notes: `ETA set to ${eta} minutes`
   });
 
-  // ✅ Send Hibot template: recall_request
-  await whatsappService.sendTemplate(ticket.phone, "recall_request", [
-    ticket.vehicleNumber || "N/A",
-    eta
-  ]);
+  try {
+    await whatsappService.recallRequest(ticket.phone, ticket.vehicleNumber || "N/A", eta);
+  } catch (err) {
+    console.error("WhatsApp send failed:", err.message);
+  }
 
   emitToLocation(ticket.locationId.toString(), "ticket:eta", { ticketId: ticket._id, eta });
   res.json({ ticket });
 }
 
-// ✅ Ready at gate
+/**
+ * Ready at Gate
+ */
 export async function markReadyAtGate(req, res) {
   const { ticketId } = req.params;
   const valet = req.user;
+
   const ticket = await Ticket.findById(ticketId);
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+  if (ticket.locationId.toString() !== valet.locationId.toString())
+    return res.status(403).json({ message: "Not authorized for this ticket" });
+
+  const current = ticket.status;
+  if (![STATUSES.ETA_2, STATUSES.ETA_5, STATUSES.ETA_10, STATUSES.RECALLED].includes(current))
+    return res.status(422).json({ message: "Cannot mark ready from current status" });
 
   ticket.status = STATUSES.READY_AT_GATE;
   await ticket.save();
 
   await StatusLog.create({
     ticketId: ticket._id,
-    from: ticket.status,
+    from: current,
     to: STATUSES.READY_AT_GATE,
     actor: `VALET:${valet.email}`,
     notes: "Ready at gate"
   });
 
-  // ✅ Send Hibot template: ready_for_pickup
-  await whatsappService.sendTemplate(ticket.phone, "ready_for_pickup", []);
+  try {
+    await whatsappService.readyForPickup(ticket.phone);
+  } catch (err) {
+    console.error("WhatsApp send failed:", err.message);
+  }
 
   emitToLocation(ticket.locationId.toString(), "ticket:ready", { ticketId: ticket._id });
   res.json({ ticket });
 }
 
-// ✅ Delivered
+/**
+ * Delivered
+ */
 export async function markDropped(req, res) {
   const { ticketId } = req.params;
   const { cashReceived } = req.body;
   const valet = req.user;
+
   const ticket = await Ticket.findById(ticketId);
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
+  if (ticket.locationId.toString() !== valet.locationId.toString())
+    return res.status(403).json({ message: "Not authorized for this ticket" });
+
   ticket.status = STATUSES.DROPPED;
+
+  // Cash handling
+  if (ticket.paymentStatus === PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY && cashReceived) {
+    ticket.paymentStatus = PAYMENT_STATUSES.PAID_CASH;
+  }
+
   await ticket.save();
 
   await StatusLog.create({
@@ -133,20 +193,29 @@ export async function markDropped(req, res) {
     notes: "Car handed to user"
   });
 
-  // ✅ Send Hibot template: delivered
-  await whatsappService.sendTemplate(ticket.phone, "delivered", []);
+  try {
+    await whatsappService.delivered(ticket.phone);
+  } catch (err) {
+    console.error("WhatsApp send failed:", err.message);
+  }
 
   emitToLocation(ticket.locationId.toString(), "ticket:dropped", { ticketId: ticket._id });
   res.json({ ticket });
 }
 
-// ✅ Payment received
+/**
+ * Payment received
+ */
 export async function markPaymentReceived(req, res) {
   const { ticketId } = req.params;
   const { method } = req.body;
   const valet = req.user;
+
   const ticket = await Ticket.findById(ticketId);
   if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+
+  if (ticket.locationId.toString() !== valet.locationId.toString())
+    return res.status(403).json({ message: "Not authorized for this ticket" });
 
   ticket.paymentStatus = method;
   await ticket.save();
@@ -159,10 +228,11 @@ export async function markPaymentReceived(req, res) {
     notes: "Payment confirmed by valet"
   });
 
-  // ✅ Send Hibot template: payment_confirmation
-  await whatsappService.sendTemplate(ticket.phone, "payment_confirmation", [
-    ticket.ticketShortId
-  ]);
+  try {
+    await whatsappService.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+  } catch (err) {
+    console.error("WhatsApp send failed:", err.message);
+  }
 
   emitToLocation(ticket.locationId.toString(), "ticket:payment", { ticketId: ticket._id, paymentStatus: method });
   res.json({ ticket });
