@@ -20,7 +20,7 @@ export default function ValetDashboard() {
 
       const locationId =
         user.locationId?.$oid || user.locationId._id || user.locationId;
-        onsole.log("🧩 User object:", user);
+        console.log("🧩 User object:", user);
         console.log("🧭 Resolved locationId:", locationId);
       
       try {
