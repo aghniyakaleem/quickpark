@@ -20,7 +20,9 @@ export default function ValetDashboard() {
 
       const locationId =
         user.locationId?.$oid || user.locationId._id || user.locationId;
-
+        onsole.log("🧩 User object:", user);
+        console.log("🧭 Resolved locationId:", locationId);
+      
       try {
         const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/locations/${locationId}`);
         setLocation(res.data.location);
