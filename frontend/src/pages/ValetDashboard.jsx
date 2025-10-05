@@ -11,6 +11,7 @@ export default function ValetDashboard() {
   const [tickets, setTickets] = useState([]);
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [pendingUpdates, setPendingUpdates] = useState({});
 
   // Fetch location & tickets
   useEffect(() => {
@@ -51,13 +52,6 @@ export default function ValetDashboard() {
           t._id === ticket._id || t.ticketId === ticket._id ? ticket : t
         )
       );
-
-      // Toast for important updates
-      if (ticket.status === "RECALLED") {
-        toast.error(`Ticket ${ticket.ticketShortId || ticket._id} was recalled!`);
-      } else if (ticket.status === "READY_FOR_PICKUP") {
-        toast.success(`Ticket ${ticket.ticketShortId || ticket._id} is ready for pickup 🚗`);
-      }
     });
 
     socket.on("ticket:created", (ticket) => {
@@ -71,19 +65,36 @@ export default function ValetDashboard() {
     };
   }, [location]);
 
-  const handleUpdate = async (ticketId, updates) => {
+  // Track local changes instead of sending immediately
+  const handleLocalChange = (ticketId, field, value) => {
+    setPendingUpdates((prev) => ({
+      ...prev,
+      [ticketId]: { ...(prev[ticketId] || {}), [field]: value },
+    }));
+  };
+
+  // Save all updates
+  const handleSaveAll = async () => {
+    const updates = Object.entries(pendingUpdates).map(([ticketId, data]) => ({
+      ticketId,
+      ...data,
+    }));
+
+    if (updates.length === 0) {
+      toast("No changes to save");
+      return;
+    }
+
     try {
-      const res = await axios.put(
-        `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`,
-        updates
-      );
+      const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/valet/save`, { updates });
+      setPendingUpdates({});
+      toast.success("All updates saved successfully 🚗");
       setTickets((prev) =>
-        prev.map((t) =>
-          t._id === ticketId || t.ticketId === ticketId ? res.data.ticket : t
-        )
+        prev.map((t) => res.data.updated.find((u) => u._id === t._id) || t)
       );
     } catch (err) {
-      console.error("❌ Update error:", err);
+      console.error("❌ Save error:", err);
+      toast.error("Failed to save changes");
     }
   };
 
@@ -102,7 +113,7 @@ export default function ValetDashboard() {
         <td>
           <input
             defaultValue={t.vehicleNumber || ""}
-            onBlur={(e) => handleUpdate(ticketId, { vehicleNumber: e.target.value })}
+            onChange={(e) => handleLocalChange(ticketId, "vehicleNumber", e.target.value)}
             placeholder="Enter vehicle number"
             className="border p-1"
           />
@@ -110,7 +121,9 @@ export default function ValetDashboard() {
         <td>
           <select
             defaultValue={t.etaMinutes || ""}
-            onChange={(e) => handleUpdate(ticketId, { etaMinutes: e.target.value ? Number(e.target.value) : null })}
+            onChange={(e) =>
+              handleLocalChange(ticketId, "etaMinutes", e.target.value ? Number(e.target.value) : null)
+            }
             className="border p-1"
           >
             <option value="">Select ETA</option>
@@ -122,7 +135,7 @@ export default function ValetDashboard() {
         <td>
           <select
             defaultValue={t.status || ""}
-            onChange={(e) => handleUpdate(ticketId, { status: e.target.value })}
+            onChange={(e) => handleLocalChange(ticketId, "status", e.target.value)}
             className="border p-1"
           >
             <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
@@ -135,7 +148,7 @@ export default function ValetDashboard() {
           <td>
             <select
               defaultValue={t.paymentStatus || "UNPAID"}
-              onChange={(e) => handleUpdate(ticketId, { paymentStatus: e.target.value })}
+              onChange={(e) => handleLocalChange(ticketId, "paymentStatus", e.target.value)}
               className="border p-1"
             >
               <option value="UNPAID">Unpaid</option>
@@ -151,7 +164,7 @@ export default function ValetDashboard() {
   return (
     <div className="p-6">
       <h1 className="text-2xl font-bold mb-4">Valet Dashboard - {location.name}</h1>
-      <table className="w-full border border-gray-300">
+      <table className="w-full border border-gray-300 mb-4">
         <thead className="bg-gray-100">
           <tr>
             <th>Ticket ID</th>
@@ -164,6 +177,12 @@ export default function ValetDashboard() {
         </thead>
         <tbody>{tickets.map(renderTicketRow)}</tbody>
       </table>
+      <button
+        onClick={handleSaveAll}
+        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded shadow"
+      >
+        Save Changes
+      </button>
     </div>
   );
 }

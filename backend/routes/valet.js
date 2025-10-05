@@ -6,8 +6,8 @@ import {
   setEta,
   markReadyAtGate,
   markDropped,
-  markRecalledHandled,
-  markPaymentReceived
+  markPaymentReceived,
+  saveAllUpdates
 } from "../controllers/valetController.js";
 import { body } from "express-validator";
 import { handleValidation } from "../middleware/validate.js";
@@ -39,9 +39,13 @@ router.post("/tickets/:ticketId/dropped",
   handleValidation,
   markDropped
 );
+router.post("/save", saveAllUpdates);
+// Removed the recalled-handled route since it's not defined/needed
 
-router.post("/tickets/:ticketId/recalled-handled", markRecalledHandled);
-
-router.post("/tickets/:ticketId/payment", body("method").isIn(["PAID_CASH","PAID_ONLINE"]), handleValidation, markPaymentReceived);
+router.post("/tickets/:ticketId/payment",
+  body("method").isIn(["PAID_CASH","PAID_ONLINE"]),
+  handleValidation,
+  markPaymentReceived
+);
 
 export default router;

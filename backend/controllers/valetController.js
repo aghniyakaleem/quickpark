@@ -237,3 +237,62 @@ export async function markPaymentReceived(req, res) {
   emitToLocation(ticket.locationId.toString(), "ticket:payment", { ticketId: ticket._id, paymentStatus: method });
   res.json({ ticket });
 }
+export async function saveAllUpdates(req, res) {
+  try {
+    const { updates } = req.body;
+    const valet = req.user;
+
+    if (!Array.isArray(updates)) return res.status(400).json({ message: "Invalid updates array" });
+
+    const updated = [];
+
+    for (const change of updates) {
+      const { ticketId, vehicleNumber, etaMinutes, status, paymentStatus } = change;
+      const ticket = await Ticket.findById(ticketId);
+      if (!ticket) continue;
+
+      if (ticket.locationId.toString() !== valet.locationId.toString()) continue;
+
+      const prevStatus = ticket.status;
+      if (vehicleNumber) ticket.vehicleNumber = vehicleNumber;
+      if (etaMinutes) ticket.etaMinutes = etaMinutes;
+      if (status) ticket.status = status;
+      if (paymentStatus) ticket.paymentStatus = paymentStatus;
+
+      await ticket.save();
+      updated.push(ticket);
+
+      // WhatsApp messages
+      switch (ticket.status) {
+        case STATUSES.PARKED:
+          await whatsappService.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes);
+          break;
+        case STATUSES.READY_AT_GATE:
+        case STATUSES.READY_FOR_PICKUP:
+          await whatsappService.readyForPickup(ticket.phone);
+          break;
+        case STATUSES.RECALLED:
+          await whatsappService.recallRequest(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes);
+          break;
+        case STATUSES.DROPPED:
+          await whatsappService.delivered(ticket.phone);
+          break;
+      }
+
+      emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
+
+      await StatusLog.create({
+        ticketId: ticket._id,
+        from: prevStatus,
+        to: ticket.status,
+        actor: `VALET:${valet.email}`,
+        notes: "Updated in batch save",
+      });
+    }
+
+    res.json({ updated });
+  } catch (err) {
+    console.error("Error in saveAllUpdates:", err);
+    res.status(500).json({ message: "Internal server error" });
+  }
+}

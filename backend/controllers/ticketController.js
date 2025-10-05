@@ -1,7 +1,7 @@
 import Ticket from "../models/Ticket.js";
 import Location from "../models/Location.js";
 import StatusLog from "../models/StatusLog.js";
-import whatsappService, { WhatsAppTemplates } from "../services/whatsappService.js";
+import whatsappService from "../services/whatsappService.js";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import shortId from "shortid";
