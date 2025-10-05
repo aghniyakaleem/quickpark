@@ -65,7 +65,7 @@ export default function ValetDashboard() {
     };
   }, [location]);
 
-  // Track local changes instead of sending immediately
+  // Track local changes for each ticket
   const handleLocalChange = (ticketId, field, value) => {
     setPendingUpdates((prev) => ({
       ...prev,
@@ -73,28 +73,38 @@ export default function ValetDashboard() {
     }));
   };
 
-  // Save all updates
-  const handleSaveAll = async () => {
-    const updates = Object.entries(pendingUpdates).map(([ticketId, data]) => ({
-      ticketId,
-      ...data,
-    }));
-
-    if (updates.length === 0) {
-      toast("No changes to save");
+  // Save a single ticket
+  const handleSaveTicket = async (ticketId) => {
+    const updateData = pendingUpdates[ticketId];
+    if (!updateData) {
+      toast("No changes to save for this ticket");
       return;
     }
 
     try {
-      const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/valet/save`, { updates });
-      setPendingUpdates({});
-      toast.success("All updates saved successfully 🚗");
-      setTickets((prev) =>
-        prev.map((t) => res.data.updated.find((u) => u._id === t._id) || t)
+      const token = localStorage.getItem("token"); // or however your auth works
+      const res = await axios.put(
+        `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`,
+        updateData,
+        { headers: { Authorization: `Bearer ${token}` } }
       );
+
+      // Update local ticket state
+      setTickets((prev) =>
+        prev.map((t) => (t._id === ticketId ? res.data.ticket : t))
+      );
+
+      // Clear pending changes for this ticket
+      setPendingUpdates((prev) => {
+        const updated = { ...prev };
+        delete updated[ticketId];
+        return updated;
+      });
+
+      toast.success(`Ticket ${ticketId} updated successfully 🚗`);
     } catch (err) {
       console.error("❌ Save error:", err);
-      toast.error("Failed to save changes");
+      toast.error(`Failed to save ticket ${ticketId}`);
     }
   };
 
@@ -157,6 +167,14 @@ export default function ValetDashboard() {
             </select>
           </td>
         )}
+        <td>
+          <button
+            onClick={() => handleSaveTicket(ticketId)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+          >
+            Save
+          </button>
+        </td>
       </tr>
     );
   };
@@ -173,16 +191,11 @@ export default function ValetDashboard() {
             <th>ETA</th>
             <th>Status</th>
             {location.paymentRequired && <th>Payment</th>}
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>{tickets.map(renderTicketRow)}</tbody>
       </table>
-      <button
-        onClick={handleSaveAll}
-        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded shadow"
-      >
-        Save Changes
-      </button>
     </div>
   );
 }

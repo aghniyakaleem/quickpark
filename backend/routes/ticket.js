@@ -32,6 +32,7 @@ router.post(
 );
 
 // Valet updates a ticket
+// Valet updates a ticket
 router.put(
   "/:ticketId/valet-update",
   param("ticketId").isString().notEmpty(),
@@ -43,23 +44,83 @@ router.put(
   handleValidation,
   async (req, res, next) => {
     try {
+      // Update the ticket
       const { ticket } = await valetUpdateTicket(req, res, next);
+
+      // Emit socket update
       emitToLocation(ticket.locationId, "ticket:updated", ticket);
+
+      // ---- Send WhatsApp updates ----
+      try {
+        const updates = req.body;
+
+        // Send ETA update
+        if (updates.etaMinutes) {
+          await whatsappService.sendTemplate(
+            ticket.phone,
+            `⏱️ Your car will be ready in ${updates.etaMinutes} minutes.`
+          );
+        }
+
+        // Send vehicle number update
+        if (updates.vehicleNumber) {
+          await whatsappService.sendTemplate(
+            ticket.phone,
+            `🚗 Your car number is updated to ${updates.vehicleNumber}.`
+          );
+        }
+
+        // Send status updates
+        if (updates.status) {
+          switch (updates.status) {
+            case "PARKED":
+              await whatsappService.sendTemplate(
+                ticket.phone,
+                `✅ Your car has been parked successfully.`
+              );
+              break;
+            case "READY_FOR_PICKUP":
+              await whatsappService.sendTemplate(
+                ticket.phone,
+                `🔔 Your car is ready for pickup. Please come to the valet.`
+              );
+              break;
+            case "RECALLED":
+              await whatsappService.sendTemplate(
+                ticket.phone,
+                `🔔 Your car recall request is registered. Please wait for updates.`
+              );
+              break;
+          }
+        }
+
+        // Payment status updates
+        if (updates.paymentStatus) {
+          switch (updates.paymentStatus) {
+            case "PAID":
+              await whatsappService.sendTemplate(
+                ticket.phone,
+                `💰 Payment received. Thank you!`
+              );
+              break;
+            case "CASH":
+              await whatsappService.sendTemplate(
+                ticket.phone,
+                `💵 Please pay cash to the valet. Your car will be ready shortly.`
+              );
+              break;
+          }
+        }
+      } catch (whatsappErr) {
+        console.error("❌ WhatsApp send error:", whatsappErr);
+      }
+
       res.json({ ok: true, ticket });
     } catch (err) {
       next(err);
     }
   }
 );
-
-// Valet fetch tickets
-router.get(
-  "/location/:locationId",
-  param("locationId").isString().notEmpty(),
-  handleValidation,
-  getTicketsByLocation
-);
-
 // WhatsApp webhook
 router.post("/whatsapp-webhook", async (req, res, next) => {
   try {
