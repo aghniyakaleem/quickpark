@@ -9,7 +9,7 @@ import { publicRateLimiter } from "../middleware/rateLimiter.js";
 import { body, param } from "express-validator";
 import { handleValidation } from "../middleware/validate.js";
 import { emitToLocation } from "../services/socketService.js";
-import whatsappService from "../services/whatsappService.js";
+import { WhatsAppService as whatsappService } from "../services/whatsappService.js";
 import Ticket from "../models/Ticket.js";
 
 const router = express.Router();
