@@ -16,7 +16,6 @@ const router = express.Router();
 
 // -------------------- PUBLIC ROUTES --------------------
 
-// Public ticket creation
 router.post(
   "/public/:slug",
   publicRateLimiter,
@@ -25,12 +24,28 @@ router.post(
   createTicketPublic
 );
 
-// Public recall
 router.post(
   "/public/:slug/recall",
   body("ticketShortId").isString().notEmpty(),
   handleValidation,
   recallRequestPublic
+);
+
+// -------------------- LOCATION QUERIES --------------------
+
+router.get(
+  "/location/:locationId",
+  param("locationId").isMongoId(),
+  handleValidation,
+  async (req, res, next) => {
+    try {
+      const { locationId } = req.params;
+      const tickets = await Ticket.find({ locationId }).sort({ createdAt: -1 });
+      res.json({ tickets });
+    } catch (err) {
+      next(err);
+    }
+  }
 );
 
 // -------------------- VALET UPDATES --------------------
@@ -46,17 +61,12 @@ router.put(
   handleValidation,
   async (req, res, next) => {
     try {
-      // Update the ticket
       const { ticket } = await valetUpdateTicket(req, res, next);
-
-      // Emit live socket update
       emitToLocation(ticket.locationId, "ticket:updated", ticket);
 
-      // ---- Send WhatsApp updates ----
       try {
         const updates = req.body;
 
-        // Handle status changes
         if (updates.status) {
           switch (updates.status) {
             case "CREATED":
@@ -66,7 +76,6 @@ router.put(
                 ticket.locationName || "QuickPark"
               );
               break;
-
             case "PARKED":
               await whatsappService.carParked(
                 ticket.phone,
@@ -74,11 +83,9 @@ router.put(
                 updates.etaMinutes || "-"
               );
               break;
-
             case "READY_FOR_PICKUP":
               await whatsappService.readyForPickup(ticket.phone);
               break;
-
             case "RECALLED":
               await whatsappService.recallRequest(
                 ticket.phone,
@@ -86,14 +93,12 @@ router.put(
                 updates.etaMinutes || "-"
               );
               break;
-
             case "DELIVERED":
               await whatsappService.delivered(ticket.phone);
               break;
           }
         }
 
-        // ETA update (if valet updates time without changing status)
         if (updates.etaMinutes && !updates.status) {
           await whatsappService.carParked(
             ticket.phone,
@@ -102,7 +107,6 @@ router.put(
           );
         }
 
-        // Payment status updates
         if (updates.paymentStatus) {
           switch (updates.paymentStatus) {
             case "PAID":
@@ -141,9 +145,7 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
 
     const locationId = ticket.locationId;
 
-    // ---- Handle Recall ----
     if (/recall/i.test(message) || button === "recall_car") {
-      // If payment required and unpaid
       if (ticket.paymentStatus === "UNPAID" && ticket.paymentRequired) {
         await whatsappService.paymentRequest(
           ticket.phone,
@@ -151,7 +153,6 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
           ticket.ticketShortId
         );
       } else {
-        // Normal recall flow
         ticket.status = "RECALLED";
         await ticket.save();
         emitToLocation(locationId.toString(), "ticket:updated", ticket);
@@ -164,7 +165,6 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
       }
     }
 
-    // ---- Handle Payment Online ----
     if (button === "pay_online") {
       const razorpayLink = `${process.env.PUBLIC_URL}/pay/${ticket._id}`;
       await whatsappService.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
@@ -175,7 +175,6 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
       );
     }
 
-    // ---- Handle Payment in Cash ----
     if (button === "pay_cash") {
       ticket.paymentStatus = "CASH";
       await ticket.save();
