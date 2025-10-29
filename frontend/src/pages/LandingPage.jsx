@@ -2,10 +2,11 @@ import React from "react";
 import { motion } from "framer-motion";
 import Navbar from "../components/Navbar";
 import { Link } from "react-router-dom";
+import { MessageCircle } from "lucide-react"; // WhatsApp-like icon
 
 export default function LandingPage() {
   return (
-    <div className="bg-[#F6EEE0] min-h-screen flex flex-col">
+    <div className="bg-[#F6EEE0] min-h-screen flex flex-col relative">
       <Navbar />
 
       {/* Hero Section */}
@@ -44,7 +45,7 @@ export default function LandingPage() {
             href="tel:+919490978692"
             className="px-6 py-3 bg-yellow-600 text-white rounded-xl shadow hover:opacity-90 transition"
           >
-            📞 +91 9490978692
+            📞 +91 7032678692
           </a>
           <a
             href="mailto:quickpark92@gmail.com"
@@ -54,6 +55,24 @@ export default function LandingPage() {
           </a>
         </motion.div>
       </section>
+
+      {/* WhatsApp Chat Button (for Meta Review) */}
+      <motion.div
+        className="fixed bottom-6 right-6 z-50"
+        initial={{ opacity: 0, scale: 0.8 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 1.2, duration: 0.8 }}
+      >
+        <a
+          href="https://wa.me/919490978692"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-3 bg-[#25D366] text-white px-5 py-3 rounded-full shadow-lg hover:bg-[#1ebe5d] transition transform hover:scale-105"
+        >
+          <MessageCircle className="w-6 h-6" />
+          <span className="font-semibold">Chat on WhatsApp</span>
+        </a>
+      </motion.div>
 
       {/* Features */}
       <section className="max-w-5xl mx-auto px-6 py-20 grid grid-cols-1 md:grid-cols-3 gap-8">
