@@ -42,7 +42,7 @@ export default function LandingPage() {
           transition={{ delay: 1, duration: 0.8 }}
         >
           <a
-            href="tel:+919490978692"
+            href="tel:+917032678692"
             className="px-6 py-3 bg-yellow-600 text-white rounded-xl shadow hover:opacity-90 transition"
           >
             📞 +91 7032678692
@@ -64,7 +64,7 @@ export default function LandingPage() {
         transition={{ delay: 1.2, duration: 0.8 }}
       >
         <a
-          href="https://wa.me/919490978692"
+          href="https://wa.me/917032678692"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center gap-3 bg-[#25D366] text-white px-5 py-3 rounded-full shadow-lg hover:bg-[#1ebe5d] transition transform hover:scale-105"
