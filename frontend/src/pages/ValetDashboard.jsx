@@ -1,3 +1,4 @@
+// frontend/src/pages/ValetDashboard.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
@@ -20,9 +21,9 @@ export default function ValetDashboard() {
 
       const locationId =
         user.locationId?.$oid || user.locationId._id || user.locationId;
-        console.log("🧩 User object:", user);
-        console.log("🧭 Resolved locationId:", locationId);
-      
+      console.log("🧩 User object:", user);
+      console.log("🧭 Resolved locationId:", locationId);
+
       try {
         const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/locations/${locationId}`);
         setLocation(res.data.location);
@@ -49,11 +50,15 @@ export default function ValetDashboard() {
     });
 
     socket.on("ticket:updated", (ticket) => {
-      setTickets((prev) =>
-        prev.map((t) =>
-          t._id === ticket._id || t.ticketId === ticket._id ? ticket : t
-        )
-      );
+      setTickets((prev) => {
+        const found = prev.some((t) => String(t._id) === String(ticket._id));
+        if (found) {
+          return prev.map((t) => (String(t._id) === String(ticket._id) ? ticket : t));
+        } else {
+          return [...prev, ticket];
+        }
+      });
+      toast.success(`Ticket updated: ${ticket.ticketShortId || ticket._id}`);
     });
 
     socket.on("ticket:created", (ticket) => {
@@ -61,9 +66,18 @@ export default function ValetDashboard() {
       toast.success(`New ticket created: ${ticket.ticketShortId || ticket._id}`);
     });
 
+    // When user sends "recall" we emit ticket:recalled with { ticketId, ticket }
+    socket.on("ticket:recalled", ({ ticketId, ticket }) => {
+      setTickets((prev) =>
+        prev.map((t) => (String(t._id) === String(ticketId) ? (ticket || { ...t, status: "RECALLED" }) : t))
+      );
+      toast(`Ticket ${ticketId} recalled`, { icon: "🔔" });
+    });
+
     return () => {
       socket.off("ticket:updated");
       socket.off("ticket:created");
+      socket.off("ticket:recalled");
     };
   }, [location]);
 
@@ -91,10 +105,11 @@ export default function ValetDashboard() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      // API returns updated ticket in res.data.ticket
+      const updatedTicket = res.data.ticket;
+
       // Update local ticket state
-      setTickets((prev) =>
-        prev.map((t) => (t._id === ticketId ? res.data.ticket : t))
-      );
+      setTickets((prev) => prev.map((t) => (String(t._id) === String(ticketId) ? updatedTicket : t)));
 
       // Clear pending changes for this ticket
       setPendingUpdates((prev) => {

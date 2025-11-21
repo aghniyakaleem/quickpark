@@ -1,4 +1,4 @@
-// models/Ticket.js
+// backend/models/Ticket.js
 import mongoose from "mongoose";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 
@@ -21,9 +21,13 @@ const TicketSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// update updatedAt on save
 TicketSchema.pre("save", function (next) {
   this.updatedAt = new Date();
   next();
 });
+
+// TTL: delete ticket documents 86400 seconds (24 hours) after createdAt
+TicketSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
 
 export default mongoose.model("Ticket", TicketSchema);

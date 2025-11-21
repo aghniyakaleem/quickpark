@@ -1,3 +1,4 @@
+// frontend/src/pages/PublicLocationPage.jsx
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import api from "../axiosConfig";
@@ -57,13 +58,14 @@ export default function PublicLocationPage() {
       });
 
       s.on("ticket:updated", (updatedTicket) => {
-        if (updatedTicket._id === newTicket.id || updatedTicket.ticketId === newTicket.id) {
+        // compare same key (_id)
+        if (updatedTicket._id === newTicket.id || updatedTicket._id === newTicket._id) {
           setTicket((prev) => ({ ...prev, ...updatedTicket }));
         }
       });
 
       s.on("ticket:recalled", ({ ticketId }) => {
-        if (ticketId === newTicket.id) {
+        if (ticketId === newTicket.id || ticketId === newTicket._id) {
           setTicket((prev) => ({ ...prev, status: "RECALLED" }));
         }
       });

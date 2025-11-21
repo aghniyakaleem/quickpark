@@ -10,8 +10,11 @@ const LocationSchema = new mongoose.Schema({
   paymentAmount: { type: Number, default: 20 },
   address: { type: String, default: "" },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  createdAt: { type: Date, default: Date.now }
-});
+   // daily counter
+   lastCountDate: { type: Date, default: null },
+   todayTicketCount: { type: Number, default: 0 },
+   createdAt: { type: Date, default: Date.now }
+ });
 
 LocationSchema.statics.createWithSlug = async function (name, paymentRequired = false, createdBy = null, paymentAmount = 20) {
   const base = slugify(name, { lower: true, strict: true, trim: true });

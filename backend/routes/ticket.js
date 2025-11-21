@@ -1,3 +1,4 @@
+// backend/routes/ticket.js
 import express from "express";
 import { 
   createTicketPublic, 
@@ -8,14 +9,10 @@ import {
 import { publicRateLimiter } from "../middleware/rateLimiter.js";
 import { body, param } from "express-validator";
 import { handleValidation } from "../middleware/validate.js";
-import { emitToLocation } from "../services/socketService.js";
-import MSG91Service from "../services/MSG91Service.js";
-import Ticket from "../models/Ticket.js";
 
 const router = express.Router();
 
-// -------------------- PUBLIC ROUTES --------------------
-
+// Public ticket creation
 router.post(
   "/public/:slug",
   publicRateLimiter,
@@ -24,6 +21,7 @@ router.post(
   createTicketPublic
 );
 
+// Public recall
 router.post(
   "/public/:slug/recall",
   body("ticketShortId").isString().notEmpty(),
@@ -31,25 +29,7 @@ router.post(
   recallRequestPublic
 );
 
-// -------------------- LOCATION QUERIES --------------------
-
-router.get(
-  "/location/:locationId",
-  param("locationId").isMongoId(),
-  handleValidation,
-  async (req, res, next) => {
-    try {
-      const { locationId } = req.params;
-      const tickets = await Ticket.find({ locationId }).sort({ createdAt: -1 });
-      res.json({ tickets });
-    } catch (err) {
-      next(err);
-    }
-  }
-);
-
-// -------------------- VALET UPDATES --------------------
-
+// Valet updates a ticket
 router.put(
   "/:ticketId/valet-update",
   param("ticketId").isString().notEmpty(),
@@ -59,139 +39,15 @@ router.put(
   body("paymentStatus").optional().isString(),
   body("paymentProvider").optional().isString(),
   handleValidation,
-  async (req, res, next) => {
-    try {
-      const { ticket } = await valetUpdateTicket(req, res, next);
-      emitToLocation(ticket.locationId, "ticket:updated", ticket);
-
-      try {
-        const updates = req.body;
-
-        if (updates.status) {
-          switch (updates.status) {
-            case "CREATED":
-              await MSG91Service.ticketCreated(
-                ticket.phone,
-                ticket.ticketShortId || ticket._id,
-                ticket.locationName || "QuickPark"
-              );
-              break;
-            case "PARKED":
-              await MSG91Service.carParked(
-                ticket.phone,
-                updates.vehicleNumber || ticket.vehicleNumber || "Unknown",
-                updates.etaMinutes || "-"
-              );
-              break;
-            case "READY_FOR_PICKUP":
-              await MSG91Service.readyForPickup(ticket.phone);
-              break;
-            case "RECALLED":
-              await MSG91Service.recallRequest(
-                ticket.phone,
-                updates.vehicleNumber || ticket.vehicleNumber || "Unknown",
-                updates.etaMinutes || "-"
-              );
-              break;
-            case "DELIVERED":
-              await MSG91Service.delivered(ticket.phone);
-              break;
-          }
-        }
-
-        if (updates.etaMinutes && !updates.status) {
-          await MSG91Service.carParked(
-            ticket.phone,
-            ticket.vehicleNumber || "Unknown",
-            updates.etaMinutes
-          );
-        }
-
-        if (updates.paymentStatus) {
-          switch (updates.paymentStatus) {
-            case "PAID":
-              await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
-              break;
-            case "UNPAID":
-              await MSG91Service.paymentRequest(
-                ticket.phone,
-                ticket.paymentAmount || 20,
-                ticket.ticketShortId
-              );
-              break;
-          }
-        }
-      } catch (whatsappErr) {
-        console.error("❌ WhatsApp send error:", whatsappErr);
-      }
-
-      res.json({ ok: true, ticket });
-    } catch (err) {
-      next(err);
-    }
-  }
+  valetUpdateTicket
 );
 
-// -------------------- WHATSAPP WEBHOOK --------------------
-
-router.post("/whatsapp-webhook", async (req, res, next) => {
-  try {
-    const { phone, message, button } = req.body;
-    if (!phone) return res.status(422).json({ message: "Phone required" });
-
-    const normalized = phone.replace(/\D/g, "");
-    const ticket = await Ticket.findOne({ phone: normalized }).sort({ createdAt: -1 });
-    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-
-    const locationId = ticket.locationId;
-
-    if (/recall/i.test(message) || button === "recall_car") {
-      if (ticket.paymentStatus === "UNPAID" && ticket.paymentRequired) {
-        await MSG91Service.paymentRequest(
-          ticket.phone,
-          ticket.paymentAmount || 20,
-          ticket.ticketShortId
-        );
-      } else {
-        ticket.status = "RECALLED";
-        await ticket.save();
-        emitToLocation(locationId.toString(), "ticket:updated", ticket);
-
-        await MSG91Service.recallRequest(
-          ticket.phone,
-          ticket.vehicleNumber || "Unknown",
-          ticket.etaMinutes || "-"
-        );
-      }
-    }
-
-    if (button === "pay_online") {
-      const razorpayLink = `${process.env.PUBLIC_URL}/pay/${ticket._id}`;
-      await MSG91Service.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
-      await MSG91Service.sendWhatsAppTemplate(
-        ticket.phone,
-        "payment_link",
-        [razorpayLink]
-      );
-    }
-
-    if (button === "pay_cash") {
-      ticket.paymentStatus = "CASH";
-      await ticket.save();
-      emitToLocation(locationId.toString(), "ticket:updated", ticket);
-
-      await MSG91Service.paymentRequest(
-        ticket.phone,
-        ticket.paymentAmount || 20,
-        ticket.ticketShortId
-      );
-    }
-
-    res.sendStatus(200);
-  } catch (err) {
-    console.error(err);
-    next(err);
-  }
-});
+// Get tickets for a location
+router.get(
+  "/location/:locationId",
+  param("locationId").isMongoId(),
+  handleValidation,
+  getTicketsByLocation
+);
 
 export default router;
