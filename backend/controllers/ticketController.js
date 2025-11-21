@@ -7,9 +7,7 @@ import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import shortId from "shortid";
 
-// ------------------------------
 // Public ticket creation
-// ------------------------------
 export async function createTicketPublic(req, res) {
   try {
     const { slug } = req.params;
@@ -27,7 +25,7 @@ export async function createTicketPublic(req, res) {
       locationId: location._id,
       phone: phone.replace(/\D/g, ""),
       status: STATUSES.AWAITING_VEHICLE_NUMBER,
-      paymentAmount: location.paymentAmount || 20
+      paymentAmount: location.paymentAmount || 20,
     });
 
     await StatusLog.create({
@@ -78,7 +76,7 @@ export async function createTicketPublic(req, res) {
   }
 }
 
-// Recall request from user (via WhatsApp button)
+// Recall request from user (via POST /public/:slug/recall)
 export async function recallRequestPublic(req, res) {
   try {
     const { slug } = req.params;
@@ -101,17 +99,26 @@ export async function recallRequestPublic(req, res) {
         ticket.paymentProvider = "MSG91_LINK";
         await ticket.save();
 
-        console.log("📩 MSG91: payment_confirmation");
-        await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+        try {
+          await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+        } catch (e) {
+          console.error("paymentConfirmation error:", e);
+        }
       } else if (button === "pay_cash") {
-        ticket.paymentStatus = PAYMENT_STATUSES.CASH;
+        ticket.paymentStatus = PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY || "PAY_CASH_ON_DELIVERY";
         await ticket.save();
 
-        console.log("📩 MSG91: payment_request (cash)");
-        await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
+        try {
+          await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
+        } catch (e) {
+          console.error("paymentRequest error:", e);
+        }
       } else {
-        console.log("📩 MSG91: parking_charges_payment");
-        await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
+        try {
+          await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
+        } catch (e) {
+          console.error("paymentRequest error:", e);
+        }
         return res.json({ ok: true, message: "Payment requested" });
       }
     }
@@ -129,10 +136,10 @@ export async function recallRequestPublic(req, res) {
       notes: "Recall requested",
     });
 
+    // send explicit payload so valet knows which ticket (and full ticket object)
     emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id, ticket });
 
     try {
-      console.log("📩 MSG91: recall_request_update");
       await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "your car", ticket.etaMinutes || "few");
     } catch (err) {
       console.error("MSG91 recall send failed:", err?.response?.data || err.message || err);
@@ -145,7 +152,7 @@ export async function recallRequestPublic(req, res) {
   }
 }
 
-// Valet updates ticket (after Save button)
+// Valet updates ticket
 export async function valetUpdateTicket(req, res) {
   try {
     const { ticketId } = req.params;
@@ -173,30 +180,26 @@ export async function valetUpdateTicket(req, res) {
       notes: "Valet updated ticket",
     });
 
-    // emit updated ticket to valets
+    // emit updated ticket to valets & users listening
     emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
 
     // Send MSG91 notifications according to status
     try {
       switch (ticket.status) {
         case STATUSES.PARKED:
-          console.log("📩 MSG91: car_parked");
           await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "N/A");
           break;
-
         case STATUSES.RECALLED:
-          console.log("📩 MSG91: recall_request_update");
           await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "few");
           break;
-
         case STATUSES.READY_FOR_PICKUP:
-          console.log("📩 MSG91: ready_for_pickup");
           await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
           break;
-
+        case STATUSES.COMPLETED:
         case STATUSES.DELIVERED:
-          console.log("📩 MSG91: vehicle_delivery_confirmation");
           await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
+          break;
+        default:
           break;
       }
 
@@ -204,7 +207,7 @@ export async function valetUpdateTicket(req, res) {
       if (paymentStatus) {
         if (paymentStatus === PAYMENT_STATUSES.PAID) {
           await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
-        } else if (paymentStatus === PAYMENT_STATUSES.CASH) {
+        } else if (paymentStatus === PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY || paymentStatus === "CASH") {
           await MSG91Service.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
         }
       }
@@ -225,7 +228,7 @@ export async function getTicketsByLocation(req, res) {
     const { locationId } = req.params;
     if (!locationId) return res.status(400).json({ message: "Location ID required" });
 
-    // filter out expired ones (TTL deletes automatically), also only show last 24h -> TTL handles this
+    // TTL on Ticket will automatically remove >24h records (index expireAfterSeconds)
     const tickets = await Ticket.find({ locationId }).sort({ createdAt: -1 }).lean();
     res.json({ tickets });
   } catch (err) {

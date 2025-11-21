@@ -8,17 +8,25 @@ export const handleMsg91Inbound = async (req, res) => {
   try {
     console.log("📥 MSG91 Inbound:", JSON.stringify(req.body, null, 2));
 
-    // MSG91 inbound payload structure may vary; adjust as needed.
-    const message = req.body?.payload?.message || req.body?.payload?.text || "";
-    const from = req.body?.payload?.from || req.body?.payload?.mobile || "";
+    // MSG91 inbound payload shape varies; check payload keys
+    const message =
+      req.body?.payload?.message ||
+      req.body?.payload?.text ||
+      req.body?.payload?.message_text ||
+      "";
+    const from =
+      req.body?.payload?.from ||
+      req.body?.payload?.mobile ||
+      req.body?.payload?.sender ||
+      "";
     const phone = String(from || "").replace(/\D/g, "");
     if (!phone) return res.status(200).send("NO_PHONE");
 
-    // Find active ticket for this phone (not completed)
+    // Find most recent active ticket for this phone (not COMPLETED)
     const ticket = await Ticket.findOne({
       phone,
-      status: { $ne: "COMPLETED" }
-    });
+      status: { $ne: "COMPLETED" },
+    }).sort({ createdAt: -1 });
 
     if (!ticket) return res.status(200).send("NO ACTIVE TICKET");
 
@@ -29,7 +37,7 @@ export const handleMsg91Inbound = async (req, res) => {
       ticket.status = "RECALLED";
       await ticket.save();
 
-      // notify valet dashboard with full ticket object
+      // notify valets with the ticket id + object so dashboard knows which car
       emitToLocation(ticket.locationId.toString(), "ticket:recalled", { ticketId: ticket._id, ticket });
 
       // send confirmation to user
@@ -44,7 +52,7 @@ export const handleMsg91Inbound = async (req, res) => {
 
     // USER → PAY CASH
     if (lower.includes("cash")) {
-      ticket.paymentStatus = PAYMENT_STATUSES.CASH;
+      ticket.paymentStatus = PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY || "PAY_CASH_ON_DELIVERY";
       await ticket.save();
 
       emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
@@ -53,7 +61,7 @@ export const handleMsg91Inbound = async (req, res) => {
 
     // USER → PAID (simple heuristic)
     if (lower.includes("paid") || lower.includes("payment done") || lower.includes("done")) {
-      ticket.paymentStatus = PAYMENT_STATUSES.PAID;
+      ticket.paymentStatus = PAYMENT_STATUSES.PAID || "PAID";
       await ticket.save();
 
       emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
