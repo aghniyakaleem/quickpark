@@ -15,17 +15,36 @@ import locationRoutes from "./routes/location.js";
 
 const app = express();
 
-app.use(express.json());
-app.use(morgan("dev"));
+// ----- FIXED CORS -----
+const allowedOrigins = [
+  "https://quickpark.co.in",
+  "https://www.quickpark.co.in",
+  "http://localhost:5173",
+  "http://localhost:3000"
+];
+
 app.use(cors({
-  origin: [
-    "https://quickpark.co.in",
-    "https://www.quickpark.co.in",
-    "http://localhost:5173",
-  ],
+  origin: function (origin, callback) {
+    // allow mobile apps / WhatsApp pings / curl
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    console.log("❌ BLOCKED ORIGIN:", origin);
+    return callback(new Error("Not allowed by CORS"));
+  },
+
   credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 }));
 
+app.use(express.json());
+app.use(morgan("dev"));
+
+// ----- ROUTES -----
 app.use("/api/locations", locationRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
