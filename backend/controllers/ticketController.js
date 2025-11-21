@@ -1,7 +1,8 @@
+// controllers/ticketController.js
 import Ticket from "../models/Ticket.js";
 import Location from "../models/Location.js";
 import StatusLog from "../models/StatusLog.js";
-import { WhatsAppService } from "../services/whatsappService.js";
+import MSG91Service from "../services/MSG91Service.js";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import shortId from "shortid";
@@ -24,6 +25,7 @@ export async function createTicketPublic(req, res) {
       locationId: location._id,
       phone: phone.replace(/\D/g, ""),
       status: STATUSES.AWAITING_VEHICLE_NUMBER,
+      paymentAmount: location.paymentAmount || 20
     });
 
     await StatusLog.create({
@@ -34,12 +36,15 @@ export async function createTicketPublic(req, res) {
       notes: "Ticket created by public portal",
     });
 
-    // ✅ WhatsApp: send template notifications
-    console.log("📩 Sending WhatsApp template: ticket_created");
-    await WhatsAppService.ticketCreated(ticket.phone, ticketShort, location.name);
-
-    console.log("📩 Sending WhatsApp template: car_picked1");
-    await WhatsAppService.carPicked(ticket.phone);
+    // Send templates
+    try {
+      console.log("📩 MSG91: valet_ticket_created_");
+      await MSG91Service.ticketCreated(ticket.phone, ticketShort, location.name);
+      console.log("📩 MSG91: car_picked");
+      await MSG91Service.carPicked(ticket.phone);
+    } catch (err) {
+      console.error("MSG91 send failed during ticket creation:", err?.response?.data || err.message || err);
+    }
 
     emitToLocation(location._id.toString(), "ticket:created", {
       ticketId: ticket._id,
@@ -76,30 +81,30 @@ export async function recallRequestPublic(req, res) {
     const ticket = await Ticket.findOne({ ticketShortId, locationId: location._id });
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    // Payment flow
+    // Payment flow: only for locations that require payment
     if (location.paymentRequired && ticket.paymentStatus === PAYMENT_STATUSES.UNPAID) {
+      const amount = location.paymentAmount || ticket.paymentAmount || 20;
+
       if (button === "pay_online") {
+        // Mark paid online (you said you won't use Razorpay for now)
         ticket.paymentStatus = PAYMENT_STATUSES.PAID;
+        ticket.paymentProvider = "MSG91_LINK";
         await ticket.save();
-        console.log("📩 Sending WhatsApp template: payment_confirmation");
-        await WhatsAppService.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+
+        console.log("📩 MSG91: payment_confirmation");
+        await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
       } else if (button === "pay_cash") {
-        ticket.paymentStatus = PAYMENT_STATUSES.UNPAID;
+        // User chose to pay cash to valet — set payment status so valet sees it
+        ticket.paymentStatus = PAYMENT_STATUSES.CASH;
         await ticket.save();
-        console.log("📩 Sending WhatsApp template: payment_request (cash)");
-        await WhatsAppService.paymentRequest(
-          ticket.phone,
-          location.paymentAmount || 20,
-          ticket.ticketShortId
-        );
+
+        // Notify user that valet will collect cash (send template acknowledging choice)
+        console.log("📩 MSG91: payment_request (cash)");
+        await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
       } else {
-        // Send payment request
-        console.log("📩 Sending WhatsApp template: payment_request");
-        await WhatsAppService.paymentRequest(
-          ticket.phone,
-          location.paymentAmount || 20,
-          ticket.ticketShortId
-        );
+        // Send payment options template (parking_charges_payment)
+        console.log("📩 MSG91: parking_charges_payment");
+        await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
         return res.json({ ok: true, message: "Payment requested" });
       }
     }
@@ -119,12 +124,16 @@ export async function recallRequestPublic(req, res) {
 
     emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id });
 
-    console.log("📩 Sending WhatsApp template: recall_request");
-    await WhatsAppService.recallRequest(
-      ticket.phone,
-      ticket.vehicleNumber || "your car",
-      ticket.etaMinutes || "few"
-    );
+    try {
+      console.log("📩 MSG91: recall_request_update");
+      await MSG91Service.recallRequest(
+        ticket.phone,
+        ticket.vehicleNumber || "your car",
+        ticket.etaMinutes || "few"
+      );
+    } catch (err) {
+      console.error("MSG91 recall send failed:", err?.response?.data || err.message || err);
+    }
 
     res.json({ ok: true, message: "Recall requested" });
   } catch (err) {
@@ -147,7 +156,7 @@ export async function valetUpdateTicket(req, res) {
     if (vehicleNumber !== undefined) ticket.vehicleNumber = vehicleNumber;
     if (etaMinutes !== undefined) ticket.etaMinutes = etaMinutes;
     if (status !== undefined && STATUSES[status]) ticket.status = status;
-    if (paymentStatus !== undefined && PAYMENT_STATUSES[paymentStatus])
+    if (paymentStatus !== undefined && Object.values(PAYMENT_STATUSES).includes(paymentStatus))
       ticket.paymentStatus = paymentStatus;
     if (paymentProvider !== undefined) ticket.paymentProvider = paymentProvider;
 
@@ -163,35 +172,41 @@ export async function valetUpdateTicket(req, res) {
 
     emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
 
-    // ✅ Send WhatsApp updates based on valet status
-    switch (ticket.status) {
-      case STATUSES.PARKED:
-        console.log("📩 Sending WhatsApp template: car_parked");
-        await WhatsAppService.carParked(
-          ticket.phone,
-          ticket.vehicleNumber,
-          ticket.etaMinutes || "N/A"
-        );
-        break;
+    // Send MSG91 notifications according to status
+    try {
+      switch (ticket.status) {
+        case STATUSES.PARKED:
+          console.log("📩 MSG91: car_parked");
+          await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "N/A");
+          break;
 
-      case STATUSES.RECALLED:
-        console.log("📩 Sending WhatsApp template: recall_request");
-        await WhatsAppService.recallRequest(
-          ticket.phone,
-          ticket.vehicleNumber,
-          ticket.etaMinutes || "few"
-        );
-        break;
+        case STATUSES.RECALLED:
+          console.log("📩 MSG91: recall_request_update");
+          await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "few");
+          break;
 
-      case STATUSES.READY_FOR_PICKUP:
-        console.log("📩 Sending WhatsApp template: ready_for_pickup");
-        await WhatsAppService.readyForPickup(ticket.phone);
-        break;
+        case STATUSES.READY_FOR_PICKUP:
+          console.log("📩 MSG91: ready_for_pickup");
+          await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
+          break;
 
-      case STATUSES.DELIVERED:
-        console.log("📩 Sending WhatsApp template: delivered");
-        await WhatsAppService.delivered(ticket.phone);
-        break;
+        case STATUSES.DELIVERED:
+          console.log("📩 MSG91: vehicle_delivery_confirmation");
+          await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
+          break;
+      }
+
+      // Payment status notifications
+      if (paymentStatus) {
+        if (paymentStatus === PAYMENT_STATUSES.PAID) {
+          await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+        } else if (paymentStatus === PAYMENT_STATUSES.CASH) {
+          // send payment request (cash instructions)
+          await MSG91Service.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
+        }
+      }
+    } catch (err) {
+      console.error("MSG91 send failed after valet update:", err?.response?.data || err.message || err);
     }
 
     res.json({ ticket });

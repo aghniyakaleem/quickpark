@@ -10,8 +10,7 @@ import authRoutes from "./routes/auth.js";
 import adminRoutes from "./routes/admin.js";
 import ticketRoutes from "./routes/ticket.js";
 import valetRoutes from "./routes/valet.js";
-import paymentRoutes from "./routes/payment.js";
-import webhookRoutes from "./routes/webhooks.js";
+import msg91WebhookRoutes from "./routes/msg91Webhook.js";
 import locationRoutes from "./routes/location.js";
 
 const app = express();
@@ -32,8 +31,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/valet", valetRoutes);
-app.use("/api/payments", paymentRoutes);
-app.use("/api/webhooks", webhookRoutes);
+app.use("/api/webhooks", msg91WebhookRoutes);
 
 app.get("/health", (req, res) => res.json({ ok: true, time: new Date() }));
 

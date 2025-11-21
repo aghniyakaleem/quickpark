@@ -9,7 +9,7 @@ import { publicRateLimiter } from "../middleware/rateLimiter.js";
 import { body, param } from "express-validator";
 import { handleValidation } from "../middleware/validate.js";
 import { emitToLocation } from "../services/socketService.js";
-import { WhatsAppService as whatsappService } from "../services/whatsappService.js";
+import MSG91Service from "../services/MSG91Service.js";
 import Ticket from "../models/Ticket.js";
 
 const router = express.Router();
@@ -70,37 +70,37 @@ router.put(
         if (updates.status) {
           switch (updates.status) {
             case "CREATED":
-              await whatsappService.ticketCreated(
+              await MSG91Service.ticketCreated(
                 ticket.phone,
                 ticket.ticketShortId || ticket._id,
                 ticket.locationName || "QuickPark"
               );
               break;
             case "PARKED":
-              await whatsappService.carParked(
+              await MSG91Service.carParked(
                 ticket.phone,
                 updates.vehicleNumber || ticket.vehicleNumber || "Unknown",
                 updates.etaMinutes || "-"
               );
               break;
             case "READY_FOR_PICKUP":
-              await whatsappService.readyForPickup(ticket.phone);
+              await MSG91Service.readyForPickup(ticket.phone);
               break;
             case "RECALLED":
-              await whatsappService.recallRequest(
+              await MSG91Service.recallRequest(
                 ticket.phone,
                 updates.vehicleNumber || ticket.vehicleNumber || "Unknown",
                 updates.etaMinutes || "-"
               );
               break;
             case "DELIVERED":
-              await whatsappService.delivered(ticket.phone);
+              await MSG91Service.delivered(ticket.phone);
               break;
           }
         }
 
         if (updates.etaMinutes && !updates.status) {
-          await whatsappService.carParked(
+          await MSG91Service.carParked(
             ticket.phone,
             ticket.vehicleNumber || "Unknown",
             updates.etaMinutes
@@ -110,10 +110,10 @@ router.put(
         if (updates.paymentStatus) {
           switch (updates.paymentStatus) {
             case "PAID":
-              await whatsappService.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+              await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
               break;
             case "UNPAID":
-              await whatsappService.paymentRequest(
+              await MSG91Service.paymentRequest(
                 ticket.phone,
                 ticket.paymentAmount || 20,
                 ticket.ticketShortId
@@ -147,7 +147,7 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
 
     if (/recall/i.test(message) || button === "recall_car") {
       if (ticket.paymentStatus === "UNPAID" && ticket.paymentRequired) {
-        await whatsappService.paymentRequest(
+        await MSG91Service.paymentRequest(
           ticket.phone,
           ticket.paymentAmount || 20,
           ticket.ticketShortId
@@ -157,7 +157,7 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
         await ticket.save();
         emitToLocation(locationId.toString(), "ticket:updated", ticket);
 
-        await whatsappService.recallRequest(
+        await MSG91Service.recallRequest(
           ticket.phone,
           ticket.vehicleNumber || "Unknown",
           ticket.etaMinutes || "-"
@@ -167,8 +167,8 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
 
     if (button === "pay_online") {
       const razorpayLink = `${process.env.PUBLIC_URL}/pay/${ticket._id}`;
-      await whatsappService.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
-      await whatsappService.sendWhatsAppTemplate(
+      await MSG91Service.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
+      await MSG91Service.sendWhatsAppTemplate(
         ticket.phone,
         "payment_link",
         [razorpayLink]
@@ -180,7 +180,7 @@ router.post("/whatsapp-webhook", async (req, res, next) => {
       await ticket.save();
       emitToLocation(locationId.toString(), "ticket:updated", ticket);
 
-      await whatsappService.paymentRequest(
+      await MSG91Service.paymentRequest(
         ticket.phone,
         ticket.paymentAmount || 20,
         ticket.ticketShortId

@@ -1,11 +1,15 @@
-// optional aggregator if needed by future tooling - exports router list
 import auth from "./auth.js";
 import admin from "./admin.js";
 import tickets from "./tickets.js";
 import valet from "./valet.js";
 import payments from "./payments.js";
-import webhooks from "./webhooks.js";
+import msg91Webhook from "./msg91Webhook.js";  // ⬅️ ADD THIS
 
 export default {
-  auth, admin, tickets, valet, payments, webhooks
+  auth,
+  admin,
+  tickets,
+  valet,
+  payments,
+  msg91Webhook   // ⬅️ THIS IS THE ACTUAL MSG91 INBOUND ROUTE
 };

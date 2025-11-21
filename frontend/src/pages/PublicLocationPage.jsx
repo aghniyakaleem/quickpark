@@ -25,25 +25,28 @@ export default function PublicLocationPage() {
 
     setLoading(true);
 
-    // 🌟 Open blank WhatsApp window immediately
-    const hibotNumber = import.meta.env.VITE_HIBOT_NUMBER;
+    // Open blank WhatsApp window immediately
+    const whatsappNumber = "918247767904"; // MSG91 WhatsApp business number
     const whatsappWindow = window.open("about:blank", "_blank");
 
     try {
-      // Create ticket
+      // Create ticket on backend
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
 
-      // Update WhatsApp window with the new ticket
+      // Update the blank WhatsApp window with prefilled message
       const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
-      whatsappWindow.location.href = `https://wa.me/${hibotNumber}?text=${encodeURIComponent(message)}`;
+      const whatsappURL = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+
+      whatsappWindow.location.href = whatsappURL;
 
       // Initialize Socket.IO
       const s = io(import.meta.env.VITE_API_URL_WS, {
         path: "/socket.io",
         transports: ["websocket"],
       });
+
       setSocket(s);
 
       s.on("connect", () => {
