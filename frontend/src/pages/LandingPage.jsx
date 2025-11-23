@@ -42,10 +42,10 @@ export default function LandingPage() {
           transition={{ delay: 1, duration: 0.8 }}
         >
           <a
-            href="tel:+917032678692"
+            href="tel:+918247767904"
             className="px-6 py-3 bg-yellow-600 text-white rounded-xl shadow hover:opacity-90 transition"
           >
-            📞 +91 7032678692
+            📞 +91 8247767904
           </a>
           <a
             href="mailto:quickpark92@gmail.com"

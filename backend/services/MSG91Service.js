@@ -8,9 +8,6 @@ const MSG91_API = "https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-messa
 
 /**
  * Generic: send a template via MSG91
- * phone: may be 10-digit or with country; function normalizes
- * templateName: exact template name on MSG91
- * params: array -> body_1, body_2...
  */
 export async function sendWhatsAppTemplate(phone, templateName, params = []) {
   if (!MSG91_AUTHKEY) {
@@ -38,7 +35,7 @@ export async function sendWhatsAppTemplate(phone, templateName, params = []) {
         namespace: MSG91_NAMESPACE,
         to_and_components: [
           {
-            to: [to],
+            to: to,        // ✅ FIXED
             components,
           },
         ],
@@ -59,10 +56,6 @@ export async function sendWhatsAppTemplate(phone, templateName, params = []) {
   }
 }
 
-/**
- * Wrapped app-specific functions.
- * Exported as both default and named export (to avoid import mismatch).
- */
 const MSG91Service = {
   sendWhatsAppTemplate,
 
@@ -84,7 +77,6 @@ const MSG91Service = {
   delivered: (phone, vehicleNumber = "") =>
     sendWhatsAppTemplate(phone, "vehicle_delivery_confirmation", [vehicleNumber]),
 
-  // parking_charges_payment: template expects amount (and ticket id if you added)
   paymentRequest: (phone, amount = "", ticketId = "") =>
     sendWhatsAppTemplate(phone, "parking_charges_payment", [String(amount), String(ticketId)]),
 
