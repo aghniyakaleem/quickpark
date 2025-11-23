@@ -1,9 +1,8 @@
-// frontend/src/pages/ValetDashboard.jsx
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
-import socket from "../services/socket";
 import toast from "react-hot-toast";
+import { useSocket } from "../hooks/useSocket";
 
 export default function ValetDashboard() {
   const { getUser } = useAuth();
@@ -21,14 +20,19 @@ export default function ValetDashboard() {
 
       const locationId =
         user.locationId?.$oid || user.locationId._id || user.locationId;
-      console.log("🧩 User object:", user);
+
       console.log("🧭 Resolved locationId:", locationId);
+      console.log("🧩 User object:", user);
 
       try {
-        const res = await axios.get(`${import.meta.env.VITE_API_URL}/api/locations/${locationId}`);
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/locations/${locationId}`
+        );
         setLocation(res.data.location);
 
-        const ticketsRes = await axios.get(`${import.meta.env.VITE_API_URL}/api/tickets/location/${locationId}`);
+        const ticketsRes = await axios.get(
+          `${import.meta.env.VITE_API_URL}/api/tickets/location/${locationId}`
+        );
         setTickets(ticketsRes.data.tickets || []);
       } catch (err) {
         console.error("❌ Fetch error:", err);
@@ -40,52 +44,50 @@ export default function ValetDashboard() {
     fetchData();
   }, [user]);
 
-  // Socket.IO setup
-  useEffect(() => {
-    if (!location) return;
-
-    socket.on("connect", () => {
-      console.log("✅ WebSocket connected:", socket.id);
-      socket.emit("joinLocation", location._id);
-    });
-
-    socket.on("ticket:updated", (ticket) => {
+  // Setup socket handlers
+  const socketRef = useSocket(location?._id, {
+    "ticket:updated": (ticket) => {
       setTickets((prev) => {
         const found = prev.some((t) => String(t._id) === String(ticket._id));
         if (found) {
-          return prev.map((t) => (String(t._id) === String(ticket._id) ? ticket : t));
-        } else {
-          return [...prev, ticket];
+          return prev.map((t) =>
+            String(t._id) === String(ticket._id) ? ticket : t
+          );
         }
+        return [...prev, ticket];
       });
-      toast.success(`Ticket updated: ${ticket.ticketShortId || ticket._id}`);
-    });
 
-    socket.on("ticket:created", (ticket) => {
+      toast.success(`Ticket updated: ${ticket.ticketShortId || ticket._id}`);
+    },
+
+    "ticket:created": (ticket) => {
       setTickets((prev) => [...prev, ticket]);
       toast.success(`New ticket created: ${ticket.ticketShortId || ticket._id}`);
-    });
+    },
 
-    // When user sends "recall" we emit ticket:recalled with { ticketId, ticket }
-    socket.on("ticket:recalled", ({ ticketId, ticket }) => {
+    "ticket:recalled": ({ ticketId, ticket }) => {
       setTickets((prev) =>
-        prev.map((t) => (String(t._id) === String(ticketId) ? (ticket || { ...t, status: "RECALLED" }) : t))
+        prev.map((t) =>
+          String(t._id) === String(ticketId)
+            ? ticket || { ...t, status: "RECALLED" }
+            : t
+        )
       );
+
       toast(`Ticket ${ticketId} recalled`, { icon: "🔔" });
-    });
+    },
+  });
 
-    return () => {
-      socket.off("ticket:updated");
-      socket.off("ticket:created");
-      socket.off("ticket:recalled");
-    };
-  }, [location]);
-
-  // Track local changes for each ticket
+  // --------------------------------------------
+  // ✅ FIXED: This function was missing
+  // --------------------------------------------
   const handleLocalChange = (ticketId, field, value) => {
     setPendingUpdates((prev) => ({
       ...prev,
-      [ticketId]: { ...(prev[ticketId] || {}), [field]: value },
+      [ticketId]: {
+        ...(prev[ticketId] || {}),
+        [field]: value,
+      },
     }));
   };
 
@@ -98,20 +100,20 @@ export default function ValetDashboard() {
     }
 
     try {
-      const token = localStorage.getItem("token"); // or however your auth works
+      const token = localStorage.getItem("token");
+
       const res = await axios.put(
         `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`,
         updateData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // API returns updated ticket in res.data.ticket
       const updatedTicket = res.data.ticket;
 
-      // Update local ticket state
-      setTickets((prev) => prev.map((t) => (String(t._id) === String(ticketId) ? updatedTicket : t)));
+      setTickets((prev) =>
+        prev.map((t) => (String(t._id) === String(ticketId) ? updatedTicket : t))
+      );
 
-      // Clear pending changes for this ticket
       setPendingUpdates((prev) => {
         const updated = { ...prev };
         delete updated[ticketId];
@@ -128,28 +130,46 @@ export default function ValetDashboard() {
   if (loading) return <div>Loading...</div>;
   if (!location) return <div>No location found.</div>;
 
+  // Ticket Row Renderer
   const renderTicketRow = (t) => {
-    const ticketId = t._id || t.ticketId || t.id || Math.random().toString(36).substring(7);
-    const phoneMasked = t.phone ? t.phone.replace(/.(?=.{4})/g, "*") : "N/A";
-    const shortId = t.ticketShortId || (ticketId.length >= 6 ? ticketId.slice(-6) : ticketId);
+    const ticketId =
+      t._id || t.ticketId || t.id || Math.random().toString(36).slice(2);
+
+    const phoneMasked = t.phone
+      ? t.phone.replace(/.(?=.{4})/g, "*")
+      : "N/A";
+
+    const shortId =
+      t.ticketShortId || (ticketId.length >= 6 ? ticketId.slice(-6) : ticketId);
 
     return (
-      <tr key={ticketId} className={t.status === "RECALLED" ? "bg-yellow-100" : ""}>
+      <tr
+        key={ticketId}
+        className={t.status === "RECALLED" ? "bg-yellow-100" : ""}
+      >
         <td>{shortId}</td>
         <td>{phoneMasked}</td>
+
         <td>
           <input
             defaultValue={t.vehicleNumber || ""}
-            onChange={(e) => handleLocalChange(ticketId, "vehicleNumber", e.target.value)}
+            onChange={(e) =>
+              handleLocalChange(ticketId, "vehicleNumber", e.target.value)
+            }
             placeholder="Enter vehicle number"
             className="border p-1"
           />
         </td>
+
         <td>
           <select
             defaultValue={t.etaMinutes || ""}
             onChange={(e) =>
-              handleLocalChange(ticketId, "etaMinutes", e.target.value ? Number(e.target.value) : null)
+              handleLocalChange(
+                ticketId,
+                "etaMinutes",
+                e.target.value ? Number(e.target.value) : null
+              )
             }
             className="border p-1"
           >
@@ -159,10 +179,13 @@ export default function ValetDashboard() {
             <option value={10}>10 mins</option>
           </select>
         </td>
+
         <td>
           <select
             defaultValue={t.status || ""}
-            onChange={(e) => handleLocalChange(ticketId, "status", e.target.value)}
+            onChange={(e) =>
+              handleLocalChange(ticketId, "status", e.target.value)
+            }
             className="border p-1"
           >
             <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
@@ -171,11 +194,14 @@ export default function ValetDashboard() {
             <option value="RECALLED">Recalled</option>
           </select>
         </td>
+
         {location.paymentRequired && (
           <td>
             <select
               defaultValue={t.paymentStatus || "UNPAID"}
-              onChange={(e) => handleLocalChange(ticketId, "paymentStatus", e.target.value)}
+              onChange={(e) =>
+                handleLocalChange(ticketId, "paymentStatus", e.target.value)
+              }
               className="border p-1"
             >
               <option value="UNPAID">Unpaid</option>
@@ -184,6 +210,7 @@ export default function ValetDashboard() {
             </select>
           </td>
         )}
+
         <td>
           <button
             onClick={() => handleSaveTicket(ticketId)}
@@ -198,7 +225,10 @@ export default function ValetDashboard() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Valet Dashboard - {location.name}</h1>
+      <h1 className="text-2xl font-bold mb-4">
+        Valet Dashboard – {location.name}
+      </h1>
+
       <table className="w-full border border-gray-300 mb-4">
         <thead className="bg-gray-100">
           <tr>
@@ -211,6 +241,7 @@ export default function ValetDashboard() {
             <th>Action</th>
           </tr>
         </thead>
+
         <tbody>{tickets.map(renderTicketRow)}</tbody>
       </table>
     </div>

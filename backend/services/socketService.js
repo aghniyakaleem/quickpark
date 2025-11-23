@@ -3,16 +3,10 @@ import { Server } from "socket.io";
 
 let io;
 
-/**
- * Initialize Socket.IO server
- * - Accepts connections from frontend (polling first -> websocket)
- * - Rooms are locationId
- */
 export const initSocket = (server) => {
   io = new Server(server, {
     cors: {
       origin: [
-        process.env.CORS_ORIGIN || "https://quickpark.co.in",
         "https://quickpark.co.in",
         "https://www.quickpark.co.in",
         "http://localhost:5173",
@@ -21,31 +15,27 @@ export const initSocket = (server) => {
       methods: ["GET", "POST"],
       credentials: true,
     },
-
-    // polling first is more stable behind proxies (Render)
-    transports: ["polling", "websocket"],
+    transports: ["polling", "websocket"], // polling first is more stable behind proxies
     path: "/socket.io",
-
-    // Stability tuning for Render / proxies
-    pingInterval: 25000,
+    // render-friendly tuning
     pingTimeout: 30000,
-    allowEIO3: true,
+    pingInterval: 25000,
   });
 
   io.on("connection", (socket) => {
     console.log("🔌 New socket connected:", socket.id);
 
     socket.on("joinLocation", (locationId) => {
-      try {
-        socket.join(locationId);
-        console.log(`🔒 Socket ${socket.id} joined room: ${locationId}`);
-      } catch (e) {
-        console.error("joinLocation error:", e);
+      // Accept string or object with id
+      const room = typeof locationId === "object" && locationId?.locationId ? locationId.locationId : locationId;
+      if (room) {
+        socket.join(room);
+        console.log(`🔒 Socket ${socket.id} joined room: ${room}`);
       }
     });
 
     socket.on("disconnect", (reason) => {
-      console.log(`❌ Socket disconnected: ${socket.id} (${reason})`);
+      console.log("❌ Socket disconnected:", socket.id, reason);
     });
   });
 
@@ -53,19 +43,19 @@ export const initSocket = (server) => {
 };
 
 export const getIO = () => {
-  if (!io) throw new Error("Socket.io not initialized!");
+  if (!io) throw new Error("Socket.io not initialized");
   return io;
 };
 
 export const emitToLocation = (locationId, event, data) => {
   if (!io) {
-    console.error("❌ emitToLocation failed: Socket.io not initialized");
+    console.error("❌ emitToLocation failed: io not initialized");
     return;
   }
   try {
-    console.log(`📢 Emitting to location ${locationId} | event: ${event}`);
-    io.to(locationId).emit(event, data);
+    console.log(`📢 Emitting ${event} to location ${locationId}`);
+    io.to(String(locationId)).emit(event, data);
   } catch (err) {
-    console.error("emitToLocation error:", err);
+    console.error("❌ emitToLocation error:", err);
   }
 };

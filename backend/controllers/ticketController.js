@@ -7,7 +7,7 @@ import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import shortId from "shortid";
 
-// Public ticket creation
+// Create ticket public
 export async function createTicketPublic(req, res) {
   try {
     const { slug } = req.params;
@@ -36,11 +36,10 @@ export async function createTicketPublic(req, res) {
       notes: "Ticket created by public portal",
     });
 
-    // update location daily counter (simple approach)
+    // update daily count on location (simple)
     const today = new Date();
     const last = location.lastCountDate;
     const sameDay = last && new Date(last).toDateString() === today.toDateString();
-
     if (sameDay) {
       location.todayTicketCount = (location.todayTicketCount || 0) + 1;
     } else {
@@ -49,17 +48,15 @@ export async function createTicketPublic(req, res) {
     }
     await location.save();
 
-    // Send templates (best-effort)
+    // best-effort templates
     try {
-      console.log("📩 MSG91: valet_ticket_created_");
       await MSG91Service.ticketCreated(ticket.phone, ticketShort, location.name);
-      console.log("📩 MSG91: car_picked");
       await MSG91Service.carPicked(ticket.phone);
     } catch (err) {
       console.error("MSG91 send failed during ticket creation:", err?.response?.data || err.message || err);
     }
 
-    // emit full ticket to valets
+    // emit to valets with full ticket
     emitToLocation(location._id.toString(), "ticket:created", ticket);
 
     res.json({
@@ -76,7 +73,7 @@ export async function createTicketPublic(req, res) {
   }
 }
 
-// Recall request from user (via POST /public/:slug/recall)
+// Recall request from public endpoint
 export async function recallRequestPublic(req, res) {
   try {
     const { slug } = req.params;
@@ -90,10 +87,9 @@ export async function recallRequestPublic(req, res) {
     const ticket = await Ticket.findOne({ ticketShortId, locationId: location._id });
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    // ---- PAYMENT FLOW ----
+    // payment flow if required
     if (location.paymentRequired && ticket.paymentStatus === PAYMENT_STATUSES.UNPAID) {
       const amount = location.paymentAmount || ticket.paymentAmount || 20;
-
       if (button === "pay_online") {
         ticket.paymentStatus = PAYMENT_STATUSES.PAID;
         ticket.paymentProvider = "MSG91_LINK";
@@ -105,9 +101,8 @@ export async function recallRequestPublic(req, res) {
           console.error("paymentConfirmation error:", e);
         }
       } else if (button === "pay_cash") {
-        ticket.paymentStatus = PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY || "PAY_CASH_ON_DELIVERY";
+        ticket.paymentStatus = PAYMENT_STATUSES.CASH;
         await ticket.save();
-
         try {
           await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
         } catch (e) {
@@ -123,7 +118,7 @@ export async function recallRequestPublic(req, res) {
       }
     }
 
-    // ---- NORMAL RECALL ----
+    // normal recall
     const prevStatus = ticket.status;
     ticket.status = STATUSES.RECALLED;
     await ticket.save();
@@ -136,7 +131,7 @@ export async function recallRequestPublic(req, res) {
       notes: "Recall requested",
     });
 
-    // send explicit payload so valet knows which ticket (and full ticket object)
+    // notify valets with explicit id + ticket object
     emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id, ticket });
 
     try {
@@ -152,7 +147,7 @@ export async function recallRequestPublic(req, res) {
   }
 }
 
-// Valet updates ticket
+// Valet update endpoint (used by valet dashboard Save)
 export async function valetUpdateTicket(req, res) {
   try {
     const { ticketId } = req.params;
@@ -180,17 +175,17 @@ export async function valetUpdateTicket(req, res) {
       notes: "Valet updated ticket",
     });
 
-    // emit updated ticket to valets & users listening
+    // Emit to valets + any connected public clients (clients listening to room)
     emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
 
-    // Send MSG91 notifications according to status
+    // send appropriate WhatsApp templates
     try {
       switch (ticket.status) {
         case STATUSES.PARKED:
           await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "N/A");
           break;
         case STATUSES.RECALLED:
-          await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "few");
+          await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "Unknown", ticket.etaMinutes || "few");
           break;
         case STATUSES.READY_FOR_PICKUP:
           await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
@@ -203,11 +198,11 @@ export async function valetUpdateTicket(req, res) {
           break;
       }
 
-      // Payment status notifications
+      // payment notifications
       if (paymentStatus) {
         if (paymentStatus === PAYMENT_STATUSES.PAID) {
           await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
-        } else if (paymentStatus === PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY || paymentStatus === "CASH") {
+        } else if (paymentStatus === PAYMENT_STATUSES.CASH || paymentStatus === "CASH") {
           await MSG91Service.paymentRequest(ticket.phone, ticket.paymentAmount || 20, ticket.ticketShortId);
         }
       }
@@ -222,13 +217,13 @@ export async function valetUpdateTicket(req, res) {
   }
 }
 
-// Fetch all tickets by location
+// get tickets by location
 export async function getTicketsByLocation(req, res) {
   try {
     const { locationId } = req.params;
     if (!locationId) return res.status(400).json({ message: "Location ID required" });
 
-    // TTL on Ticket will automatically remove >24h records (index expireAfterSeconds)
+    // TTL on ticket collection will remove older than 24h
     const tickets = await Ticket.find({ locationId }).sort({ createdAt: -1 }).lean();
     res.json({ tickets });
   } catch (err) {

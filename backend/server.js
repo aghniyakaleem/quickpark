@@ -18,6 +18,7 @@ async function start() {
 
     const httpServer = http.createServer(app);
 
+    // initialize socket.io with the http server
     const io = initSocket(httpServer);
 
     io.on("connection", (socket) => {

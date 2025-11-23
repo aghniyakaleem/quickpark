@@ -8,41 +8,49 @@ export const handleMsg91Inbound = async (req, res) => {
   try {
     console.log("📥 MSG91 Inbound:", JSON.stringify(req.body, null, 2));
 
-    // MSG91 inbound payload shape varies; check payload keys
+    // flexible extraction for MSG91 payloads
+    const payload = req.body?.payload || req.body;
     const message =
-      req.body?.payload?.message ||
-      req.body?.payload?.text ||
-      req.body?.payload?.message_text ||
-      "";
-    const from =
-      req.body?.payload?.from ||
-      req.body?.payload?.mobile ||
-      req.body?.payload?.sender ||
-      "";
-    const phone = String(from || "").replace(/\D/g, "");
-    if (!phone) return res.status(200).send("NO_PHONE");
+      String(payload?.message || payload?.text || payload?.body || "").trim();
+    const from = String(payload?.from || payload?.mobile || payload?.sender || payload?.phone || "").trim();
 
-    // Find most recent active ticket for this phone (not COMPLETED)
+    const phone = from.replace(/\D/g, "");
+    if (!phone) {
+      console.log("No phone found in inbound payload");
+      return res.status(200).send("NO_PHONE");
+    }
+
+    // find last active ticket for this phone (not COMPLETED/DELIVERED)
     const ticket = await Ticket.findOne({
       phone,
-      status: { $ne: "COMPLETED" },
+      status: { $nin: ["COMPLETED", "DELIVERED"] },
     }).sort({ createdAt: -1 });
 
-    if (!ticket) return res.status(200).send("NO ACTIVE TICKET");
+    if (!ticket) {
+      console.log("No active ticket found for phone:", phone);
+      return res.status(200).send("NO_ACTIVE_TICKET");
+    }
 
-    const lower = String(message || "").trim().toLowerCase();
+    const lower = (message || "").toLowerCase();
 
-    // USER → RECALL CAR
-    if (lower.includes("recall")) {
+    // RECALL
+    if (lower.includes("recall") || /get my vehicle|get my car|i want my car/i.test(lower)) {
       ticket.status = "RECALLED";
       await ticket.save();
 
-      // notify valets with the ticket id + object so dashboard knows which car
-      emitToLocation(ticket.locationId.toString(), "ticket:recalled", { ticketId: ticket._id, ticket });
+      // notify valet(s) with ticket id and full ticket data
+      emitToLocation(ticket.locationId.toString(), "ticket:recalled", {
+        ticketId: ticket._id,
+        ticket: ticket.toObject ? ticket.toObject() : ticket,
+      });
 
-      // send confirmation to user
+      // confirmation back to user
       try {
-        await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "your car", ticket.etaMinutes || "few");
+        await MSG91Service.recallRequest(
+          ticket.phone,
+          ticket.vehicleNumber || "your car",
+          ticket.etaMinutes || "few"
+        );
       } catch (err) {
         console.error("MSG91 recallRequest error:", err?.response?.data || err.message || err);
       }
@@ -50,21 +58,28 @@ export const handleMsg91Inbound = async (req, res) => {
       return res.status(200).send("RECALL_DONE");
     }
 
-    // USER → PAY CASH
-    if (lower.includes("cash")) {
-      ticket.paymentStatus = PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY || "PAY_CASH_ON_DELIVERY";
+    // PAY CASH (user indicates cash)
+    if (lower.includes("cash") || /pay cash/i.test(lower)) {
+      ticket.paymentStatus = PAYMENT_STATUSES.CASH;
       await ticket.save();
 
       emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
       return res.status(200).send("CASH_REQUESTED");
     }
 
-    // USER → PAID (simple heuristic)
+    // PAID confirmation
     if (lower.includes("paid") || lower.includes("payment done") || lower.includes("done")) {
-      ticket.paymentStatus = PAYMENT_STATUSES.PAID || "PAID";
+      ticket.paymentStatus = PAYMENT_STATUSES.PAID;
       await ticket.save();
 
       emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
+
+      try {
+        await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
+      } catch (err) {
+        console.error("MSG91 paymentConfirmation error:", err?.response?.data || err.message || err);
+      }
+
       return res.status(200).send("PAYMENT_CONFIRMED");
     }
 
