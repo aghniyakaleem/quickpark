@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import jwtDecode from "jwt-decode";
 
 export const useAuth = () => {
@@ -14,20 +14,23 @@ export const useAuth = () => {
     setToken(null);
   };
 
-  const getUser = () => {
+  // Memoize decoded user so it does NOT change every render
+  const user = useMemo(() => {
     if (!token) return null;
     try {
       const decoded = jwtDecode(token);
-      // Ensure locationId is accessible as a string
-      if (decoded.locationId && decoded.locationId.$oid) {
+
+      // Normalize locationId to plain string
+      if (decoded.locationId?.$oid) {
         decoded.locationId = decoded.locationId.$oid;
       }
       return decoded;
+
     } catch (err) {
       console.error("Invalid token", err);
       return null;
     }
-  };
+  }, [token]);
 
-  return { token, login, logout, getUser };
+  return { token, login, logout, user };
 };
