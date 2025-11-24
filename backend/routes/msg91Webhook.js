@@ -1,9 +1,13 @@
-// backend/routes/msg91Webhook.js
 import express from "express";
 import { handleMsg91Inbound } from "../controllers/msg91WebhookController.js";
 
 const router = express.Router();
 
-router.post("/inbound", express.json({ type: "*/*" }), handleMsg91Inbound);
+// Msg91 sends webhook as text/plain or form-data, NOT JSON
+router.post(
+  "/webhook",
+  express.text({ type: "*/*" }),
+  handleMsg91Inbound
+);
 
 export default router;
