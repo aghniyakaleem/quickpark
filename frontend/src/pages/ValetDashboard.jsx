@@ -1,29 +1,28 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { useSocket } from "../hooks/useSocket";
 
 export default function ValetDashboard() {
-  const { user } = useAuth(); // <-- fixed, stable user
+  const { user } = useAuth();
 
   const [tickets, setTickets] = useState([]);
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pendingUpdates, setPendingUpdates] = useState({});
+  const [highlighted, setHighlighted] = useState(null);
 
   const locationId = user?.locationId || null;
 
-  // =====================================================
-  // 1️⃣ Fetch location & tickets only when locationId exists
-  // =====================================================
+  const rowRefs = useRef({});
+
+  // Fetch location + tickets
   useEffect(() => {
     if (!locationId) return;
 
     async function fetchData() {
       try {
-        console.log("📍 Fetching location:", locationId);
-
         const locRes = await axios.get(
           `${import.meta.env.VITE_API_URL}/api/locations/${locationId}`
         );
@@ -34,26 +33,27 @@ export default function ValetDashboard() {
         );
         setTickets(ticketRes.data.tickets || []);
       } catch (err) {
-        console.error("❌ Fetch error:", err);
+        console.error("Fetch error:", err);
       } finally {
         setLoading(false);
       }
     }
 
     fetchData();
-  }, [locationId]); // <-- FIXED dependency
+  }, [locationId]);
 
+  // 🔊 Play alert sound
+  const playBeep = () => {
+    const audio = new Audio("/alert.mp3"); // place alert.mp3 in public folder
+    audio.play().catch(() => {});
+  };
 
-  // =====================================================
-  // 2️⃣ Memoize socket handlers so they don't reinitialize
-  // =====================================================
+  // Socket handlers
   const socketHandlers = useMemo(
     () => ({
       "ticket:updated": (ticket) => {
         setTickets((prev) =>
-          prev.map((t) =>
-            String(t._id) === String(ticket._id) ? ticket : t
-          )
+          prev.map((t) => (String(t._id) === String(ticket._id) ? ticket : t))
         );
         toast.success(`Ticket updated: ${ticket.ticketShortId}`);
       },
@@ -63,6 +63,7 @@ export default function ValetDashboard() {
         toast.success(`New ticket created: ${ticket.ticketShortId}`);
       },
 
+      // 🟥 USER CLICKED "GET MY VEHICLE"
       "ticket:recalled": ({ ticketId, ticket }) => {
         setTickets((prev) =>
           prev.map((t) =>
@@ -71,19 +72,26 @@ export default function ValetDashboard() {
               : t
           )
         );
-        toast(`Ticket ${ticketId} recalled`);
+
+        setHighlighted(ticketId);
+        playBeep();
+        toast("🚗 User requested their car!", { icon: "⚠️" });
+
+        // Scroll to that row
+        setTimeout(() => {
+          rowRefs.current[ticketId]?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }, 200);
       },
     }),
-    [] // NEVER change
+    []
   );
 
-  // Start socket
   useSocket(locationId, socketHandlers);
 
-
-  // =====================================================
-  // 3️⃣ Local updates
-  // =====================================================
+  // Local edits
   const handleLocalChange = (ticketId, field, value) => {
     setPendingUpdates((prev) => ({
       ...prev,
@@ -100,7 +108,6 @@ export default function ValetDashboard() {
 
     try {
       const token = localStorage.getItem("token");
-
       const res = await axios.put(
         `${import.meta.env.VITE_API_URL}/api/tickets/${ticketId}/valet-update`,
         updateData,
@@ -113,32 +120,36 @@ export default function ValetDashboard() {
         prev.map((t) => (String(t._id) === String(ticketId) ? updated : t))
       );
 
-      setPendingUpdates((prev) => {
-        const updatedObj = { ...prev };
-        delete updatedObj[ticketId];
-        return updatedObj;
-      });
+      const updatedObj = { ...pendingUpdates };
+      delete updatedObj[ticketId];
+      setPendingUpdates(updatedObj);
 
-      toast.success(`Saved`);
+      toast.success("Saved");
     } catch (err) {
       console.error(err);
       toast.error("Failed to save");
     }
   };
 
-
   if (loading) return <div>Loading...</div>;
   if (!location) return <div>No location found.</div>;
 
-
-  // =====================================================
-  // 4️⃣ Render Ticket Row
-  // =====================================================
+  // Render row
   const renderTicketRow = (t) => {
     const id = String(t._id);
 
     return (
-      <tr key={id} className={t.status === "RECALLED" ? "bg-yellow-100" : ""}>
+      <tr
+        key={id}
+        ref={(el) => (rowRefs.current[id] = el)}
+        className={
+          highlighted === id
+            ? "bg-red-200 animate-pulse"
+            : t.status === "RECALLED"
+            ? "bg-yellow-200"
+            : ""
+        }
+      >
         <td>{t.ticketShortId}</td>
         <td>{t.phone?.replace(/.(?=.{4})/g, "*") || "N/A"}</td>
 
@@ -205,7 +216,6 @@ export default function ValetDashboard() {
       </tr>
     );
   };
-
 
   return (
     <div className="p-6">
