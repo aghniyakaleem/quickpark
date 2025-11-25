@@ -1,16 +1,15 @@
-// src/hooks/useSocket.js
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
-export function useSocket(locationId, handlers = {}) {
+export default function useSocket(locationId, handlers = {}) {
   const socketRef = useRef(null);
 
   useEffect(() => {
     if (!locationId) return;
 
     const socket = io(import.meta.env.VITE_API_URL, {
-      transports: ["websocket"], // FORCE WEBSOCKET ONLY
-      path: "/socket.io/",       // required on Render
+      transports: ["websocket"],
+      path: "/socket.io/",
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -24,7 +23,6 @@ export function useSocket(locationId, handlers = {}) {
 
     socketRef.current = socket;
 
-    // CONNECT
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
       socket.emit("join-location", locationId);
@@ -34,13 +32,12 @@ export function useSocket(locationId, handlers = {}) {
       console.log("Socket disconnected:", reason);
     });
 
-    // REGISTER ALL HANDLERS
+    // Attach all event handlers passed in
     Object.entries(handlers).forEach(([event, fn]) => {
       socket.on(event, fn);
     });
 
     return () => {
-      console.log("Socket cleanup");
       socket.disconnect();
     };
   }, [locationId]);
