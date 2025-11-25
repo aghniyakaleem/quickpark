@@ -8,67 +8,87 @@ export const handleMsg91Inbound = async (req, res) => {
   try {
     console.log("📥 MSG91 Inbound:", JSON.stringify(req.body, null, 2));
 
-    const payload = req.body?.payload || req.body;
+    // MSG91 sends payload in various shapes. Try payload wrapper first then raw.
+    const payload = req.body?.payload || req.body || {};
 
-    // -----------------------------------------------
-    // EXTRACT MESSAGE + DETECT BUTTONS
-    // -----------------------------------------------
+    // 1) Try common fields (text, message, body)
     let message =
       String(
         payload?.message ||
-          payload?.text ||
-          payload?.body ||
-          payload?.message_text ||
-          ""
+        payload?.text ||
+        payload?.body ||
+        payload?.message_text ||
+        payload?.messages?.[0]?.text?.body ||
+        ""
       ).trim();
 
-    const from = String(
-      payload?.from ||
-        payload?.mobile ||
-        payload?.sender ||
-        payload?.phone ||
-        ""
-    ).trim();
-
-    const phone = from.replace(/\D/g, "");
-    if (!phone) return res.status(200).send("NO_PHONE");
-
-    // ------------------------------------------------
-    // 1️⃣ Detect MSG91 button click
-    // ------------------------------------------------
-    const button =
-      payload?.button ||
-      payload?.btn ||
-      payload?.interactive_button ||
-      payload?.interactiveButton;
-
-    if (button) {
-      console.log("🟦 Button clicked:", button);
-
-      const b = String(button).toLowerCase();
-
-      // If user clicked Get Vehicle button
-      if (b.includes("vehicle") || b.includes("get")) {
-        message = "get my vehicle"; // Force recall handling
+    // 2) Detect interactive/button payloads (MSG91 may use `interactive` / `button` / `button_reply`)
+    // Check messages array (newer WhatsApp payload shape)
+    const messagesArray = Array.isArray(payload?.messages) ? payload.messages : null;
+    if (messagesArray && messagesArray.length) {
+      const m = messagesArray[0];
+      if (m?.type === "button" || m?.type === "interactive" || m?.type === "button_reply") {
+        // message text can be button reply text or id
+        message = (m?.button_reply?.title || m?.button_reply?.id || m?.button?.text || m?.interactive?.button_reply?.id || m?.interactive?.button_reply?.title || "").toString().trim();
+      } else if (m?.type === "text" && m?.text?.body) {
+        message = m.text.body.toString().trim();
       }
     }
 
-    // ------------------------------------------------
-    // Fetch active ticket
-    // ------------------------------------------------
+    // 3) Also check top-level `interactive`/`button` fields
+    const button =
+      payload?.button ||
+      payload?.btn ||
+      payload?.interactive ||
+      payload?.interactive_button ||
+      payload?.interactive?.button_reply ||
+      payload?.interactive?.button_reply?.id ||
+      payload?.interactive?.button_reply?.title;
+
+    if (button) {
+      // normalise to a short string
+      const bstr = (typeof button === "object" ? JSON.stringify(button) : String(button)).toLowerCase();
+      if (bstr) {
+        // If user hits a button labelled with anything vehicle/recall-like, force recall
+        if (bstr.includes("vehicle") || bstr.includes("get") || bstr.includes("recall")) {
+          message = "get my vehicle";
+        }
+      }
+    }
+
+    // get from number
+    const from =
+      String(
+        payload?.from ||
+        payload?.mobile ||
+        payload?.sender ||
+        payload?.phone ||
+        payload?.customerNumber ||
+        payload?.messages?.[0]?.from ||
+        ""
+      ).trim();
+
+    const phone = from.replace(/\D/g, "");
+    if (!phone) {
+      console.log("No phone found in inbound payload");
+      return res.status(200).send("NO_PHONE");
+    }
+
+    // find last active ticket for this phone (exclude completed)
     const ticket = await Ticket.findOne({
       phone,
       status: { $nin: ["COMPLETED", "DELIVERED"] },
     }).sort({ createdAt: -1 });
 
-    if (!ticket) return res.status(200).send("NO_ACTIVE_TICKET");
+    if (!ticket) {
+      console.log("No active ticket found for phone:", phone);
+      return res.status(200).send("NO_ACTIVE_TICKET");
+    }
 
-    const lower = message.toLowerCase();
-    console.log("📝 Final parsed message:", message);
+    const lower = (message || "").toLowerCase();
+    console.log("📝 Parsed inbound message:", message);
 
-    // ------------------------------------------------
-    // 2️⃣ Recall request (via text OR button)
-    // ------------------------------------------------
+    // --- RECALL (text OR button)
     if (
       lower.includes("recall") ||
       lower.includes("get my vehicle") ||
@@ -80,13 +100,13 @@ export const handleMsg91Inbound = async (req, res) => {
       ticket.status = "RECALLED";
       await ticket.save();
 
-      // Emit live update to dashboard
+      // Emit update to dashboard(s)
       emitToLocation(ticket.locationId.toString(), "ticket:recalled", {
         ticketId: ticket._id,
-        ticket: ticket.toObject(),
+        ticket: ticket.toObject ? ticket.toObject() : ticket,
       });
 
-      // Send confirmation back to user
+      // send confirmation back to user (best-effort)
       try {
         await MSG91Service.recallRequest(
           ticket.phone,
@@ -100,49 +120,30 @@ export const handleMsg91Inbound = async (req, res) => {
       return res.status(200).send("RECALL_OK");
     }
 
-    // ------------------------------------------------
-    // 3️⃣ User says they will pay by cash
-    // ------------------------------------------------
-    if (lower.includes("cash")) {
+    // --- PAY CASH
+    if (lower.includes("cash") || /pay cash/i.test(lower)) {
       ticket.paymentStatus = PAYMENT_STATUSES.CASH;
       await ticket.save();
-
       emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
-
       return res.status(200).send("CASH_OK");
     }
 
-    // ------------------------------------------------
-    // 4️⃣ Payment done
-    // ------------------------------------------------
-    if (
-      lower.includes("paid") ||
-      lower.includes("payment done") ||
-      lower.includes("done")
-    ) {
+    // --- PAYMENT CONFIRMED
+    if (lower.includes("paid") || lower.includes("payment done") || lower.includes("done")) {
       ticket.paymentStatus = PAYMENT_STATUSES.PAID;
       await ticket.save();
-
       emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
-
       try {
-        await MSG91Service.paymentConfirmation(
-          ticket.phone,
-          ticket.ticketShortId
-        );
+        await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
       } catch (err) {
-        console.error(
-          "MSG91 paymentConfirmation error:",
-          err?.response?.data || err
-        );
+        console.error("MSG91 paymentConfirmation error:", err?.response?.data || err);
       }
-
       return res.status(200).send("PAYMENT_OK");
     }
 
     return res.status(200).send("IGNORED");
   } catch (err) {
     console.error("❌ MSG91 webhook error", err);
-    res.status(500).send("ERR");
+    return res.status(500).send("ERR");
   }
 };
