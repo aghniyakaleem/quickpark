@@ -1,5 +1,4 @@
 // server.js
-app.set("trust proxy", 1);
 import http from "http";
 import app from "./app.js";
 import { connectDB } from "./config/db.js";

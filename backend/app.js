@@ -15,7 +15,7 @@ import locationRoutes from "./routes/location.js";
 import msg91Router from "./routes/msg91.js";
 
 const app = express();
-app.set("trust proxy", true); 
+app.set("trust proxy", 1); 
 // ----- FIXED CORS -----
 const allowedOrigins = [
   "https://quickpark.co.in",

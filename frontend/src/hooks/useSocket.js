@@ -1,38 +1,46 @@
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
-export function useSocket(locationId, handlers = {}) {
+export default function useSocket(locationId, onTicketUpdate) {
   const socketRef = useRef(null);
 
   useEffect(() => {
     if (!locationId) return;
 
-    const socket = io(import.meta.env.VITE_API_URL_WS, {
-      path: "/socket.io",
-      transports: ["websocket"],
-      withCredentials: true,
+    const socket = io(import.meta.env.VITE_API_URL, {
+      transports: ["websocket"], // 🔥 FORCE WEBSOCKET ONLY
+      path: "/socket.io/",       // 🔥 Required for Render
       reconnection: true,
       reconnectionAttempts: Infinity,
-      reconnectionDelay: 2000,
-      timeout: 20000,
+      reconnectionDelay: 1000,
+      pingInterval: 25000,       // 🔥 Prevent "transport close"
+      pingTimeout: 60000,
+      withCredentials: false,
+      extraHeaders: {
+        Origin: import.meta.env.VITE_PUBLIC_URL,
+      },
     });
 
     socketRef.current = socket;
 
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
-      socket.emit("joinLocation", locationId);
+      socket.emit("join-location", locationId);
     });
 
-    Object.entries(handlers).forEach(([event, fn]) => {
-      socket.on(event, fn);
+    socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+    });
+
+    socket.on("ticket:updated", (ticket) => {
+      console.log("Received ticket update:", ticket);
+      onTicketUpdate(ticket);
     });
 
     return () => {
-      Object.entries(handlers).forEach(([event, fn]) => {
-        socket.off(event, fn);
-      });
-      socket.disconnect();
+      if (socket) {
+        socket.disconnect();
+      }
     };
   }, [locationId]);
 
