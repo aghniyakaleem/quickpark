@@ -9,7 +9,7 @@ export default function useSocket(locationId, handlers = {}) {
 
     const socket = io(import.meta.env.VITE_API_URL, {
       transports: ["websocket"],
-      path: "/socket.io/",
+      path: "/socket.io",
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -25,7 +25,7 @@ export default function useSocket(locationId, handlers = {}) {
 
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
-      socket.emit("join-location", locationId);
+      socket.emit("joinLocation", locationId);
     });
 
     socket.on("disconnect", (reason) => {
