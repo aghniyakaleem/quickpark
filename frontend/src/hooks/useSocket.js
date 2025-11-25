@@ -1,19 +1,20 @@
+// src/hooks/useSocket.js
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
-export default function useSocket(locationId, onTicketUpdate) {
+export function useSocket(locationId, handlers = {}) {
   const socketRef = useRef(null);
 
   useEffect(() => {
     if (!locationId) return;
 
     const socket = io(import.meta.env.VITE_API_URL, {
-      transports: ["websocket"], // 🔥 FORCE WEBSOCKET ONLY
-      path: "/socket.io/",       // 🔥 Required for Render
+      transports: ["websocket"], // FORCE WEBSOCKET ONLY
+      path: "/socket.io/",       // required on Render
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
-      pingInterval: 25000,       // 🔥 Prevent "transport close"
+      pingInterval: 25000,
       pingTimeout: 60000,
       withCredentials: false,
       extraHeaders: {
@@ -23,6 +24,7 @@ export default function useSocket(locationId, onTicketUpdate) {
 
     socketRef.current = socket;
 
+    // CONNECT
     socket.on("connect", () => {
       console.log("Socket connected:", socket.id);
       socket.emit("join-location", locationId);
@@ -32,15 +34,14 @@ export default function useSocket(locationId, onTicketUpdate) {
       console.log("Socket disconnected:", reason);
     });
 
-    socket.on("ticket:updated", (ticket) => {
-      console.log("Received ticket update:", ticket);
-      onTicketUpdate(ticket);
+    // REGISTER ALL HANDLERS
+    Object.entries(handlers).forEach(([event, fn]) => {
+      socket.on(event, fn);
     });
 
     return () => {
-      if (socket) {
-        socket.disconnect();
-      }
+      console.log("Socket cleanup");
+      socket.disconnect();
     };
   }, [locationId]);
 

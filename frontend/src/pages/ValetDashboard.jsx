@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { useSocket } from "../hooks/useSocket";
+import  useSocket from "../hooks/useSocket";
 
 export default function ValetDashboard() {
   const { user } = useAuth();
