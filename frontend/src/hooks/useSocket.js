@@ -8,9 +8,10 @@ export function useSocket(locationId, handlers = {}) {
   useEffect(() => {
     if (!locationId) return;
 
-    const socket = io(import.meta.env.VITE_API_URL_WS || import.meta.env.VITE_API_URL, {
+    // FORCE WebSocket → Render works best this way
+    const socket = io(import.meta.env.VITE_API_URL, {
       path: "/socket.io",
-      transports: ["polling", "websocket"], // polling first helps behind proxies
+      transports: ["websocket"], 
       withCredentials: true,
       reconnection: true,
       reconnectionAttempts: Infinity,
@@ -22,23 +23,21 @@ export function useSocket(locationId, handlers = {}) {
     socketRef.current = socket;
 
     socket.on("connect", () => {
-      console.log("Socket connected (hook):", socket.id);
+      console.log("⚡ Socket connected:", socket.id);
       socket.emit("joinLocation", locationId);
     });
 
     socket.on("connect_error", (err) => {
-      console.warn("Socket connect_error:", err.message);
+      console.warn("❌ Socket connect_error:", err.message);
     });
 
-    // attach handlers
+    // Register event handlers
     Object.entries(handlers).forEach(([event, fn]) => {
       socket.on(event, fn);
     });
 
     return () => {
-      Object.entries(handlers).forEach(([event, fn]) => {
-        socket.off(event, fn);
-      });
+      Object.entries(handlers).forEach(([event, fn]) => socket.off(event, fn));
       socket.disconnect();
     };
   }, [locationId]);
