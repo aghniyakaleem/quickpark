@@ -32,7 +32,7 @@ export default function useSocket(locationId, handlers = {}) {
       console.log("Socket disconnected:", reason);
     });
 
-    // Attach all event handlers passed in
+    // Attach all handlers dynamically
     Object.entries(handlers).forEach(([event, fn]) => {
       socket.on(event, fn);
     });
