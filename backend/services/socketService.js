@@ -20,13 +20,13 @@ export const initSocket = (server) => {
     // render-friendly tuning
     pingTimeout: 30000,
     pingInterval: 25000,
+    allowEIO3: true, // if older clients exist
   });
 
   io.on("connection", (socket) => {
-    console.log("🔌 New socket connected:", socket.id);
+    console.log("🔌 New socket connected:", socket.id, "transport:", socket.conn.transport.name);
 
     socket.on("joinLocation", (locationId) => {
-      // Accept string or object with id
       const room = typeof locationId === "object" && locationId?.locationId ? locationId.locationId : locationId;
       if (room) {
         socket.join(room);
@@ -35,7 +35,12 @@ export const initSocket = (server) => {
     });
 
     socket.on("disconnect", (reason) => {
-      console.log("❌ Socket disconnected:", socket.id, reason);
+      console.log("❌ Socket disconnected:", socket.id, reason, "transport:", socket.conn?.transport?.name);
+    });
+
+    socket.conn.on("close", (reason) => {
+      // extra low-level debug
+      console.log("socket.conn close:", socket.id, reason);
     });
   });
 
