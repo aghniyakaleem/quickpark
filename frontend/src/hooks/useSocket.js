@@ -1,13 +1,14 @@
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
-
+let globalSocket = null;
 export default function useSocket(locationId, handlers = {}) {
   const socketRef = useRef(null);
 
   useEffect(() => {
     if (!locationId) return;
 
-    const socket = io(import.meta.env.VITE_API_URL, {
+    if (!globalSocket) {
+      globalSocket = io(import.meta.env.VITE_API_URL, {
       transports: ["websocket"],
       path: "/socket.io",
       reconnection: true,
@@ -20,18 +21,13 @@ export default function useSocket(locationId, handlers = {}) {
         Origin: import.meta.env.VITE_PUBLIC_URL,
       },
     });
+  }
 
+  const socket = globalSocket;
     socketRef.current = socket;
 
-    socket.on("connect", () => {
-      console.log("Socket connected:", socket.id);
-      socket.emit("joinLocation", locationId);
-    });
-
-    socket.on("disconnect", (reason) => {
-      console.log("Socket disconnected:", reason);
-    });
-
+    // Join room
+    socket.emit("joinLocation", locationId);
     // Attach all handlers dynamically
     Object.entries(handlers).forEach(([event, fn]) => {
       socket.on(event, fn);
