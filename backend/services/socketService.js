@@ -1,16 +1,11 @@
 // backend/services/socketService.js
 import { Server } from "socket.io";
+import os from "os";
 
-let io;
+let io = null;
 
-/**
- * Initialize and return a singleton Socket.IO server instance.
- * Safe to call multiple times (will return same io if already created).
- */
 export const initSocket = (server) => {
-  if (io) {
-    return io;
-  }
+  if (io) return io; // singleton guard
 
   io = new Server(server, {
     cors: {
@@ -19,26 +14,30 @@ export const initSocket = (server) => {
         "https://www.quickpark.co.in",
         "http://localhost:5173",
         "http://localhost:3000",
-        // add any other client origins here
       ],
       methods: ["GET", "POST"],
       credentials: true,
     },
 
-    // Render-specific robust options:
-    transports: ["websocket"], // FORCE websocket only (prevents polling -> upgrade handshake issues)
-    upgrade: false,            // disable Engine.IO upgrade flow (avoid polling)
+    // Render-hardened options
+    transports: ["websocket"],   // force WebSocket
+    upgrade: false,              // avoid polling->upgrade handshake
     path: "/socket.io",
-    pingTimeout: 60000,
+    pingTimeout: 120000,         // allow 120s before engine.io decides it's timed out
     pingInterval: 25000,
-    perMessageDeflate: false,  // avoid compressed frames issues on some proxies
+    perMessageDeflate: false,
     maxHttpBufferSize: 1e8,
   });
 
   io.on("connection", (socket) => {
-    console.log("🔌 New socket connected:", socket.id, "transport:", socket.conn?.transport?.name);
+    const pid = process.pid;
+    const uptime = process.uptime();
+    const mem = process.memoryUsage();
+    console.log(
+      `🔌 New socket connected: ${socket.id} transport: ${socket.conn?.transport?.name} pid:${pid} up:${Math.round(uptime)}s mem:${Math.round(mem.rss / 1024 / 1024)}MB host:${os.hostname()}`
+    );
 
-    // Join room from client
+    // Join room handler
     socket.on("joinLocation", (locationId) => {
       const room = typeof locationId === "object" && locationId?.locationId ? locationId.locationId : locationId;
       if (room) {
@@ -47,30 +46,28 @@ export const initSocket = (server) => {
       }
     });
 
-    // client heartbeat reply (we optionally log)
+    // client pong debug (optional)
     socket.on("client:pong", () => {
-      // optional: uncomment to see pongs
-      // console.log("client:pong from", socket.id);
+      // no-op: keeps connection alive
     });
 
-    // Server-side custom heartbeat to keep Render from closing idle connections
+    // Keepalive: proactive server heartbeats
     const heartbeatInterval = setInterval(() => {
       try {
         if (socket.connected) {
           socket.emit("server:ping", Date.now());
         }
       } catch (err) {
-        // swallow errors but log optionally
+        // don't crash
         console.warn("heartbeat emit failed for", socket.id, err?.message || err);
       }
-    }, 10000); // every 10s
+    }, 5000); // emit every 5s
 
     socket.on("disconnect", (reason) => {
       clearInterval(heartbeatInterval);
       console.log("❌ Socket disconnected:", socket.id, reason, "transport:", socket.conn?.transport?.name);
     });
 
-    // Low-level close debug
     if (socket.conn) {
       socket.conn.on("close", (reason) => {
         console.log("socket.conn close:", socket.id, reason);
