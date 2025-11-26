@@ -11,8 +11,7 @@ import adminRoutes from "./routes/admin.js";
 import ticketRoutes from "./routes/ticket.js";
 import valetRoutes from "./routes/valet.js";
 import msg91WebhookRoutes from "./routes/msg91Webhook.js";
-import locationRoutes from "./routes/location.js";
-import msg91Router from "./routes/msg91.js";
+import locationRoutes from "./routes/location.js";  
 
 const app = express();
 app.set("trust proxy", 1); 
@@ -51,8 +50,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/valet", valetRoutes);
-app.use("/api/webhooks", msg91WebhookRoutes);
-app.use("/webhook/msg91", msg91Router);
+app.use("/webhook/msg91", msg91WebhookRoutes);
 app.get("/health", (req, res) => res.json({ ok: true, time: new Date() }));
 
 export default app;

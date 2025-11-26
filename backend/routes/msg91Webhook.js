@@ -5,7 +5,7 @@ const router = express.Router();
 
 // Msg91 sends webhook as text/plain or form-data, NOT JSON
 router.post(
-  "/webhook",
+ "/inbound",
   express.text({ type: "*/*" }),
   handleMsg91Inbound
 );
