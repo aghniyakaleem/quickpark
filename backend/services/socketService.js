@@ -15,7 +15,8 @@ export const initSocket = (server) => {
       methods: ["GET", "POST"],
       credentials: true,
     },
-    transports: ["polling", "websocket"], // polling first is more stable behind proxies
+    transports: ["websocket"],   // 🔥 FORCE WEBSOCKET ONLY
+    upgrade: false,   
     path: "/socket.io",
     // render-friendly tuning
     pingTimeout: 30000,
