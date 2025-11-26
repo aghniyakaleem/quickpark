@@ -19,11 +19,11 @@ async function start() {
     const httpServer = http.createServer(app);
 
     // initialize socket.io with the http server
+    // initSocket will create the Server once and return the singleton io
     const io = initSocket(httpServer);
 
-    io.on("connection", (socket) => {
-      console.log(`✅ Socket connected: ${socket.id}`);
-    });
+    // NOTE: Do NOT attach a second io.on("connection") handler here.
+    // socketService.js manages the connection lifecycle and logging to avoid duplicate listeners.
 
     httpServer.listen(PORT, () => {
       console.log(`✅ Server running on port ${PORT}`);

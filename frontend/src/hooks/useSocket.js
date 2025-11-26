@@ -1,3 +1,4 @@
+// src/hooks/useSocket.js
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
@@ -9,21 +10,23 @@ export default function useSocket(locationId, handlers = {}) {
   useEffect(() => {
     if (!locationId) return;
 
+    // create a single global socket instance (singleton)
     if (!globalSocket) {
       globalSocket = io(import.meta.env.VITE_API_URL, {
         path: "/socket.io",           // must match server exactly
-        transports: ["polling", "websocket"], // polling first to be proxy-friendly
+        transports: ["websocket"],    // match server: websocket-only
         reconnection: true,
         reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
         pingInterval: 25000,
         pingTimeout: 60000,
-        // DO NOT set extraHeaders unless absolutely necessary (CDNs can block)
-        // extraHeaders: { Origin: import.meta.env.VITE_PUBLIC_URL },
-        // withCredentials: true, // enable only if you need cookies
+        autoConnect: true,
       });
 
-      // debug listeners for reconnect lifecycle
+      // client lifecycle debug
+      globalSocket.on("connect", () => {
+        console.log("client: connected", globalSocket.id, "transport:", globalSocket.io?.engine?.transport?.name);
+      });
       globalSocket.on("connect_error", (err) => {
         console.error("socket connect_error", err);
       });
@@ -36,26 +39,53 @@ export default function useSocket(locationId, handlers = {}) {
       globalSocket.on("error", (err) => {
         console.error("socket error", err);
       });
-      globalSocket.on("connect", () => {
-        console.log("client: connected", globalSocket.id, "transport:", globalSocket.io.engine.transport.name);
-      });
       globalSocket.on("disconnect", (reason) => {
-        console.warn("client: disconnect", reason, "transport:", globalSocket.io.engine.transport.name);
+        console.warn("client: disconnect", reason, "transport:", globalSocket.io?.engine?.transport?.name);
+      });
+
+      // Respond to server heartbeat to keep connection alive from client side
+      globalSocket.on("server:ping", () => {
+        try {
+          globalSocket.emit("client:pong");
+        } catch (err) {
+          // ignore
+        }
       });
     }
 
     const socket = globalSocket;
     socketRef.current = socket;
 
-    // join the room exactly once per location
-    socket.emit("joinLocation", locationId);
+    // Ensure we join the location room once we're connected
+    const joinRoom = () => {
+      try {
+        socket.emit("joinLocation", locationId);
+      } catch (err) {
+        console.error("Failed to emit joinLocation", err);
+      }
+    };
 
-    // Attach handlers for this component
-    Object.entries(handlers).forEach(([event, fn]) => socket.on(event, fn));
+    if (socket.connected) {
+      joinRoom();
+    } else {
+      socket.once("connect", joinRoom);
+    }
 
+    // Attach provided handlers (component-specific)
+    Object.entries(handlers).forEach(([event, fn]) => {
+      socket.on(event, fn);
+    });
+
+    // cleanup: remove the handlers we attached. Do NOT disconnect the global socket.
     return () => {
-      // cleanup handlers only
-      Object.entries(handlers).forEach(([event, fn]) => socket.off(event, fn));
+      Object.entries(handlers).forEach(([event, fn]) => {
+        try {
+          socket.off(event, fn);
+        } catch (err) {
+          // ignore
+        }
+      });
+      // don't disconnect globalSocket here
     };
   }, [locationId]);
 
