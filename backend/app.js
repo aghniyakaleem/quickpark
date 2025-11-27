@@ -12,7 +12,6 @@ import ticketRoutes from "./routes/ticket.js";
 import valetRoutes from "./routes/valet.js";
 import msg91WebhookRoutes from "./routes/msg91Webhook.js";
 import locationRoutes from "./routes/location.js";  
-
 const app = express();
 app.set("trust proxy", 1); 
 // ----- FIXED CORS -----

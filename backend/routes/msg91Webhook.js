@@ -3,11 +3,16 @@ import { handleMsg91Inbound } from "../controllers/msg91WebhookController.js";
 
 const router = express.Router();
 
-// Msg91 sends webhook as text/plain or form-data, NOT JSON
+// MSG91 sends text/plain → MUST use express.text()
 router.post(
- "/inbound",
-  express.text({ type: "*/*" }),
-  handleMsg91Inbound
+  "/webhook",
+  express.text({ type: "*/*" }),  // <-- IMPORTANT
+  (req, res) => {
+    console.log("🔥 MSG91 WEBHOOK HIT");
+    console.log("Raw Body:", req.body);
+
+    res.status(200).json({ status: "received" });
+  }
 );
 
 export default router;
