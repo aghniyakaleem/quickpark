@@ -56,8 +56,8 @@ export async function createTicketPublic(req, res) {
       console.error("MSG91 send failed during ticket creation:", err?.response?.data || err.message || err);
     }
 
-    // emit to valets with full ticket
-    emitToLocation(location._id.toString(), "ticket:created", ticket);
+    // emit to valets with full ticket object (frontend expects full object)
+    emitToLocation(String(location._id), "ticket:created", ticket.toObject());
 
     res.json({
       ticket: {
@@ -121,6 +121,7 @@ export async function recallRequestPublic(req, res) {
     // normal recall
     const prevStatus = ticket.status;
     ticket.status = STATUSES.RECALLED;
+    ticket.recall = true;
     await ticket.save();
 
     await StatusLog.create({
@@ -131,8 +132,9 @@ export async function recallRequestPublic(req, res) {
       notes: "Recall requested",
     });
 
-    // notify valets with explicit id + ticket object
-    emitToLocation(location._id.toString(), "ticket:recalled", { ticketId: ticket._id, ticket });
+    // notify valets with explicit id + full ticket object
+    emitToLocation(String(location._id), "ticket:recalled", ticket.toObject());
+    emitToLocation(String(location._id), "ticket:updated", ticket.toObject());
 
     try {
       await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "your car", ticket.etaMinutes || "few");
@@ -160,9 +162,18 @@ export async function valetUpdateTicket(req, res) {
 
     if (vehicleNumber !== undefined) ticket.vehicleNumber = vehicleNumber;
     if (etaMinutes !== undefined) ticket.etaMinutes = etaMinutes;
-    if (status !== undefined && STATUSES[status]) ticket.status = status;
+
+    // Accept status only if it's one of STATUSES values
+    if (status !== undefined && Object.values(STATUSES).includes(status)) {
+      ticket.status = status;
+      // maintain recall boolean
+      if (status === STATUSES.RECALLED) ticket.recall = true;
+      if (status === STATUSES.READY_FOR_PICKUP || status === STATUSES.PARKED) ticket.recall = false;
+    }
+
     if (paymentStatus !== undefined && Object.values(PAYMENT_STATUSES).includes(paymentStatus))
       ticket.paymentStatus = paymentStatus;
+
     if (paymentProvider !== undefined) ticket.paymentProvider = paymentProvider;
 
     await ticket.save();
@@ -175,8 +186,8 @@ export async function valetUpdateTicket(req, res) {
       notes: "Valet updated ticket",
     });
 
-    // Emit to valets + any connected public clients (clients listening to room)
-    emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
+    // Emit full ticket object (frontend expects full ticket)
+    emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
 
     // send appropriate WhatsApp templates
     try {
@@ -210,7 +221,7 @@ export async function valetUpdateTicket(req, res) {
       console.error("MSG91 send failed after valet update:", err?.response?.data || err.message || err);
     }
 
-    res.json({ ticket });
+    res.json({ ticket: ticket.toObject() });
   } catch (err) {
     console.error("Error in valetUpdateTicket:", err);
     res.status(500).json({ message: "Internal server error" });

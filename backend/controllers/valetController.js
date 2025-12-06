@@ -2,7 +2,7 @@ import Ticket from "../models/Ticket.js";
 import StatusLog from "../models/StatusLog.js";
 import Location from "../models/Location.js";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
-import { MSG91Service } from "../services/MSG91Service.js";   // FIXED
+import MSG91Service from "../services/MSG91Service.js";   // ✅ FIXED — default import
 import { emitToLocation } from "../services/socketService.js";
 
 function allowedTransition(current, next) {
@@ -26,6 +26,7 @@ function allowedTransition(current, next) {
 export async function getTicketsForValet(req, res) {
   const locationId = req.user.locationId;
   if (!locationId) return res.status(403).json({ message: "Valet not assigned" });
+
   const { q, status, recall } = req.query;
 
   const filter = { locationId };
@@ -75,7 +76,7 @@ export async function setVehicleAndPark(req, res) {
 
   // WhatsApp send
   try {
-    await Msg91Service.carParked(ticket.phone, ticket.vehicleNumber || "N/A", ticket.etaMinutes || 0);
+    await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber || "N/A", ticket.etaMinutes || 5);
   } catch (err) {
     console.error("WhatsApp send failed:", err.message);
   }
@@ -100,6 +101,7 @@ export async function setEta(req, res) {
 
   const current = ticket.status;
   const toStatus = { 2: STATUSES.ETA_2, 5: STATUSES.ETA_5, 10: STATUSES.ETA_10 }[Number(eta)];
+
   if (!allowedTransition(current, toStatus))
     return res.status(422).json({ message: `Cannot set ETA from ${current}` });
 
@@ -115,9 +117,9 @@ export async function setEta(req, res) {
     notes: `ETA set to ${eta} minutes`
   });
 
-  // FIXED — recallRequest only takes vehicleNumber
+  // WhatsApp send
   try {
-    await Msg91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "N/A");
+    await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "N/A");
   } catch (err) {
     console.error("WhatsApp send failed:", err.message);
   }
@@ -155,7 +157,7 @@ export async function markReadyAtGate(req, res) {
   });
 
   try {
-    await Msg91Service.readyForPickup(ticket.phone);
+    await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
   } catch (err) {
     console.error("WhatsApp send failed:", err.message);
   }
@@ -196,7 +198,7 @@ export async function markDropped(req, res) {
   });
 
   try {
-    await Msg91Service.delivered(ticket.phone);
+    await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
   } catch (err) {
     console.error("WhatsApp send failed:", err.message);
   }
@@ -234,6 +236,9 @@ export async function markPaymentReceived(req, res) {
   res.json({ ticket });
 }
 
+/**
+ * Batch Save Updates
+ */
 export async function saveAllUpdates(req, res) {
   try {
     const { updates } = req.body;
@@ -262,19 +267,19 @@ export async function saveAllUpdates(req, res) {
       // WhatsApp messages
       switch (ticket.status) {
         case STATUSES.PARKED:
-          await Msg91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes);
+          await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes);
           break;
 
         case STATUSES.READY_AT_GATE:
-          await Msg91Service.readyForPickup(ticket.phone);
+          await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
           break;
 
         case STATUSES.RECALLED:
-          await Msg91Service.recallRequest(ticket.phone, ticket.vehicleNumber);
+          await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber);
           break;
 
         case STATUSES.DROPPED:
-          await Msg91Service.delivered(ticket.phone);
+          await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
           break;
       }
 

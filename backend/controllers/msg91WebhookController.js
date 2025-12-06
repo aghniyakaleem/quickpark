@@ -4,48 +4,82 @@ import { PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import MSG91Service from "../services/MSG91Service.js";
 
+/**
+ * Robust body parser for MSG91 inbound payload.
+ * MSG91 sometimes sends text/plain containing JSON, or key=value, or form-data.
+ */
+function parseInboundBody(raw) {
+  if (!raw) return {};
+  // If already an object, return it
+  if (typeof raw === "object") return raw;
+
+  // If string: try JSON
+  if (typeof raw === "string") {
+    const s = raw.trim();
+
+    // Try direct JSON
+    try {
+      return JSON.parse(s);
+    } catch (e) {
+      // Not JSON — try urlencoded / key=value pairs
+    }
+
+    // Try decode URI style (a=...&b=...)
+    if (s.includes("=") && s.includes("&")) {
+      const obj = {};
+      s.split("&").forEach(pair => {
+        const [k, ...rest] = pair.split("=");
+        if (!k) return;
+        const val = rest.join("=");
+        try {
+          obj[k] = decodeURIComponent(val || "");
+        } catch (e) {
+          obj[k] = val || "";
+        }
+      });
+      // Sometimes MSG91 wraps actual payload in 'payload' key
+      if (obj.payload) {
+        try { return JSON.parse(obj.payload); } catch(e) { return obj; }
+      }
+      return obj;
+    }
+
+    // Last fallback: return raw string in `message` field
+    return { message: s };
+  }
+
+  return {};
+}
+
 export const handleMsg91Inbound = async (req, res) => {
   try {
-    console.log("📥 MSG91 RAW Inbound:", JSON.stringify(req.body, null, 2));
+    // req.body may be string (express.text) or parsed object
+    console.log("📥 MSG91 RAW Inbound (raw):", typeof req.body === "string" ? req.body : JSON.stringify(req.body, null, 2));
 
-    // Normalise wrapper
-    const payload = req.body?.payload || req.body || {};
+    const payload = parseInboundBody(req.body) || {};
     console.log("📥 Normalised Payload:", JSON.stringify(payload, null, 2));
 
     let message = "";
 
     // =======================================================
-    // A) Handle MSG91 WhatsApp Interactive / Buttons
+    // A) Handle nested messages array (WhatsApp interactive/button)
     // =======================================================
     if (Array.isArray(payload.messages) && payload.messages.length) {
       const m = payload.messages[0];
 
-      // new interactive button payload
       if (m?.interactive?.button_reply) {
-        message =
-          m.interactive.button_reply.title ||
-          m.interactive.button_reply.id ||
-          "";
-      }
-
-      // older interactive
-      else if (m?.button_reply) {
+        message = m.interactive.button_reply.title || m.interactive.button_reply.id || "";
+      } else if (m?.button_reply) {
         message = m.button_reply.title || m.button_reply.id || "";
-      }
-
-      // legacy button
-      else if (m?.button) {
+      } else if (m?.button) {
         message = m.button.text || m.button.payload || "";
-      }
-
-      // plain text
-      else if (m?.type === "text" && m.text?.body) {
+      } else if (m?.type === "text" && m?.text?.body) {
         message = m.text.body;
       }
     }
 
     // =======================================================
-    // B) Fallback top-level interactive/button fields
+    // B) Top-level button fields fallback
     // =======================================================
     if (!message) {
       const btn =
@@ -64,7 +98,7 @@ export const handleMsg91Inbound = async (req, res) => {
     }
 
     // =======================================================
-    // C) Final fallback — normal text
+    // C) Final fallback — plain text fields
     // =======================================================
     if (!message) {
       message =
@@ -72,15 +106,14 @@ export const handleMsg91Inbound = async (req, res) => {
         payload?.text ||
         payload?.body ||
         payload?.message_text ||
+        payload?.template_name ||
         "";
     }
 
-    message = String(message).trim();
+    message = String(message || "").trim();
     const lower = message.toLowerCase();
 
-    // =======================================================
-    // D) Normalize any button → recall
-    // =======================================================
+    // Normalize common recall button texts to canonical string
     if (
       lower.includes("vehicle") ||
       lower.includes("get") ||
@@ -92,18 +125,25 @@ export const handleMsg91Inbound = async (req, res) => {
     console.log("📝 FINAL PARSED MESSAGE:", message);
 
     // =======================================================
-    // Extract phone
+    // Extract phone — try many shapes
     // =======================================================
-    const from =
+    let from =
       payload?.from ||
       payload?.mobile ||
       payload?.sender ||
       payload?.phone ||
       payload?.customerNumber ||
+      payload?.contacts?.[0]?.wa_id ||
+      payload?.contacts?.[0]?.profile?.phone ||
       payload?.messages?.[0]?.from ||
       "";
 
-    const phone = String(from).replace(/\D/g, "");
+    // If payload came as key/value map where sender is inside messages[0].contacts
+    if (!from && Array.isArray(payload?.messages) && payload.messages[0]) {
+      from = payload.messages[0]?.from || payload.messages[0]?.contacts?.[0]?.wa_id || "";
+    }
+
+    const phone = String(from || "").replace(/\D/g, "");
 
     if (!phone) {
       console.log("❌ NO PHONE IN PAYLOAD");
@@ -111,7 +151,7 @@ export const handleMsg91Inbound = async (req, res) => {
     }
 
     // =======================================================
-    // Find active ticket
+    // Find the latest active ticket for this phone (not finalised)
     // =======================================================
     const ticket = await Ticket.findOne({
       phone,
@@ -124,18 +164,18 @@ export const handleMsg91Inbound = async (req, res) => {
     }
 
     // =======================================================
-    // RECALL
+    // Handle "Get my vehicle" recall
     // =======================================================
     if (message === "get my vehicle") {
       console.log("🚗 Recall triggered for", ticket._id);
 
       ticket.status = "RECALLED";
+      ticket.recall = true;
       await ticket.save();
 
-      emitToLocation(ticket.locationId.toString(), "ticket:recalled", {
-        ticketId: ticket._id,
-        ticket: ticket.toObject(),
-      });
+      // Emit full ticket object to valets (frontend expects full ticket)
+      emitToLocation(String(ticket.locationId), "ticket:recalled", ticket.toObject());
+      emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
 
       try {
         await MSG91Service.recallRequest(
@@ -151,22 +191,22 @@ export const handleMsg91Inbound = async (req, res) => {
     }
 
     // =======================================================
-    // CASH
+    // CASH reply
     // =======================================================
     if (lower.includes("cash")) {
       ticket.paymentStatus = PAYMENT_STATUSES.CASH;
       await ticket.save();
-      emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
+      emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
       return res.status(200).send("CASH_OK");
     }
 
     // =======================================================
-    // PAYMENT DONE
+    // PAYMENT confirmation reply
     // =======================================================
     if (lower.includes("paid") || lower.includes("done")) {
       ticket.paymentStatus = PAYMENT_STATUSES.PAID;
       await ticket.save();
-      emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
+      emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
 
       try {
         await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
@@ -177,6 +217,7 @@ export const handleMsg91Inbound = async (req, res) => {
       return res.status(200).send("PAYMENT_OK");
     }
 
+    // If we didn't match anything, acknowledge — don't treat as error
     return res.status(200).send("IGNORED");
   } catch (err) {
     console.error("❌ MSG91 webhook error", err);
