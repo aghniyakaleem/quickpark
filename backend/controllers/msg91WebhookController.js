@@ -3,7 +3,15 @@ import Ticket from "../models/Ticket.js";
 import { PAYMENT_STATUSES } from "../utils/enums.js";
 import { emitToLocation } from "../services/socketService.js";
 import MSG91Service from "../services/MSG91Service.js";
-
+ // Normalize WhatsApp wa_id to match DB format (remove +91 or 91)
+function normalizePhone(num) {
+  if (!num) return "";
+  num = String(num).replace(/\D/g, "");
+  if (num.startsWith("91") && num.length === 12) {
+    return num.substring(2);
+  }
+  return num;
+}
 /**
  * Parse inbound body that may be JSON (sent as text), urlencoded, or object.
  */
@@ -132,7 +140,37 @@ export const handleMsg91Inbound = async (req, res) => {
       console.log("❌ NO ACTIVE TICKET for", phone);
       return res.status(200).send("NO_ACTIVE_TICKET");
     }
+    // === HANDLE: USER SENDS VEHICLE NUMBER (4 digits) ===
+    const vehicleMatch = message.match(/^\d{4}$/);
+    if (vehicleMatch) {
+      const vehicleNumber = vehicleMatch[0];
+      console.log("🚗 User sent vehicle number:", vehicleNumber);
 
+      ticket.vehicleNumber = vehicleNumber;
+
+      // If ticket was awaiting vehicle number → mark as parked
+      if (ticket.status === "AWAITING_VEHICLE_NUMBER" || !ticket.status) {
+        ticket.status = "PARKED";
+      }
+
+      await ticket.save();
+
+      const emitPayload = {
+        ticketId: ticket._id.toString(),
+        ticket: ticket.toObject(),
+      };
+
+      emitToLocation(String(ticket.locationId), "ticket:updated", emitPayload);
+
+      // Optional: Send confirmation message
+      try {
+        await MSG91Service.vehicleNumberConfirmed(ticket.phone, vehicleNumber);
+      } catch (err) {
+        console.error("vehicleNumberConfirmed error:", err?.response?.data || err);
+      }
+
+      return res.status(200).send("VEHICLE_NUMBER_OK");
+    }
     // === HANDLE: Get My Vehicle (user pressed button) ===
     if (message === "get my vehicle") {
       console.log("🚗 Recall BUTTON pressed by user for ticket", ticket._id);
