@@ -124,7 +124,7 @@ export const handleMsg91Inbound = async (req, res) => {
       from = payload.messages[0]?.from || payload.messages[0]?.contacts?.[0]?.wa_id || "";
     }
 
-    const phone = String(from || "").replace(/\D/g, "");
+    const phone = normalizePhone(from);
     if (!phone) {
       console.log("❌ NO PHONE IN PAYLOAD");
       return res.status(200).send("NO_PHONE");
