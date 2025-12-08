@@ -62,20 +62,17 @@ const MSG91Service = {
   ticketCreated: (phone, ticketShortId, locationName) =>
     sendWhatsAppTemplate(phone, "valet_ticket_created_", [locationName, ticketShortId]),
 
-  carPicked: (phone, vehicleNumber = "") =>
-    sendWhatsAppTemplate(phone, "car_picked", [vehicleNumber]),
-
   carParked: (phone, vehicleNumber = "", eta = "") =>
     sendWhatsAppTemplate(phone, "car_parked", [vehicleNumber, String(eta)]),
 
-  recallRequest: (phone, vehicleNumber = "", eta = "") =>
-    sendWhatsAppTemplate(phone, "recall_request_update", [vehicleNumber, String(eta)]),
+  recallRequest: (phone, vehicleNumber = "") =>
+    sendWhatsAppTemplate(phone, "recall_request_update", [vehicleNumber]),
 
-  readyForPickup: (phone, vehicleNumber = "") =>
-    sendWhatsAppTemplate(phone, "ready_for_pickup", vehicleNumber ? [vehicleNumber] : []),
+  readyForPickup: (phone) =>
+    sendWhatsAppTemplate(phone, "ready_for_pickup", []),
 
-  delivered: (phone, vehicleNumber = "") =>
-    sendWhatsAppTemplate(phone, "vehicle_delivery_confirmation", [vehicleNumber]),
+  delivered: (phone) =>
+    sendWhatsAppTemplate(phone, "vehicle_delivery_confirmation", []),
 
   paymentRequest: (phone, amount = "", ticketId = "") =>
     sendWhatsAppTemplate(phone, "parking_charges_payment", [String(amount), String(ticketId)]),
