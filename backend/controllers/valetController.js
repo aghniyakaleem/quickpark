@@ -1,19 +1,17 @@
+// backend/controllers/valetController.js
 import Ticket from "../models/Ticket.js";
 import StatusLog from "../models/StatusLog.js";
 import Location from "../models/Location.js";
 import { STATUSES, PAYMENT_STATUSES } from "../utils/enums.js";
-import MSG91Service from "../services/MSG91Service.js";   // ✅ FIXED — default import
+import MSG91Service from "../services/MSG91Service.js";
 import { emitToLocation } from "../services/socketService.js";
 
 function allowedTransition(current, next) {
   const rules = {
-    [STATUSES.AWAITING_VEHICLE_NUMBER]: [STATUSES.PARKED, STATUSES.AWAITING_VEHICLE_NUMBER],
-    [STATUSES.PARKED]: [STATUSES.RECALLED, STATUSES.DROPPED, STATUSES.PARKED, STATUSES.ETA_2, STATUSES.ETA_5, STATUSES.ETA_10],
-    [STATUSES.RECALLED]: [STATUSES.ETA_2, STATUSES.ETA_5, STATUSES.ETA_10],
-    [STATUSES.ETA_2]: [STATUSES.READY_AT_GATE],
-    [STATUSES.ETA_5]: [STATUSES.READY_AT_GATE],
-    [STATUSES.ETA_10]: [STATUSES.READY_AT_GATE],
-    [STATUSES.READY_AT_GATE]: [STATUSES.DROPPED],
+    [STATUSES.AWAITING_VEHICLE]: [STATUSES.PARKED, STATUSES.AWAITING_VEHICLE],
+    [STATUSES.PARKED]: [STATUSES.RECALLED, STATUSES.DROPPED, STATUSES.PARKED, STATUSES.READY_FOR_PICKUP],
+    [STATUSES.RECALLED]: [STATUSES.READY_FOR_PICKUP],
+    [STATUSES.READY_FOR_PICKUP]: [STATUSES.DROPPED],
     [STATUSES.DROPPED]: []
   };
   const allowed = rules[current] || [];
@@ -26,7 +24,6 @@ function allowedTransition(current, next) {
 export async function getTicketsForValet(req, res) {
   const locationId = req.user.locationId;
   if (!locationId) return res.status(403).json({ message: "Valet not assigned" });
-
   const { q, status, recall } = req.query;
 
   const filter = { locationId };
@@ -42,7 +39,7 @@ export async function getTicketsForValet(req, res) {
 }
 
 /**
- * Valet sets vehicle number and parks ticket
+ * Valet sets vehicle and parks ticket
  */
 export async function setVehicleAndPark(req, res) {
   const { ticketId } = req.params;
@@ -58,35 +55,36 @@ export async function setVehicleAndPark(req, res) {
   ticket.vehicleNumber = vehicleNumber || ticket.vehicleNumber;
   ticket.parkedAt = parkedAt || ticket.parkedAt;
   ticket.status = STATUSES.PARKED;
+  ticket.recall = false;
 
   if (eta && [2, 5, 10].includes(Number(eta))) {
     ticket.etaMinutes = Number(eta);
-    ticket.status = { 2: STATUSES.ETA_2, 5: STATUSES.ETA_5, 10: STATUSES.ETA_10 }[Number(eta)] || ticket.status;
   }
 
   await ticket.save();
 
   await StatusLog.create({
     ticketId: ticket._id,
-    from: STATUSES.AWAITING_VEHICLE_NUMBER,
+    from: STATUSES.AWAITING_VEHICLE,
     to: ticket.status,
     actor: `VALET:${valet.email}`,
     notes: `Parked by valet ${valet.email}`
   });
 
-  // WhatsApp send
+  // notify user
   try {
     await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber || "N/A", ticket.etaMinutes || 5);
   } catch (err) {
-    console.error("WhatsApp send failed:", err.message);
+    console.error("WhatsApp send failed (carParked):", err?.response?.data || err?.message || err);
   }
 
-  emitToLocation(ticket.locationId.toString(), "ticket:updated", { ticketId: ticket._id, status: ticket.status });
-  res.json({ ticket });
+  const emitPayload = { ticketId: ticket._id.toString(), ticket: ticket.toObject() };
+  emitToLocation(ticket.locationId.toString(), "ticket:updated", emitPayload);
+  res.json({ ticket: ticket.toObject() });
 }
 
 /**
- * Valet sets ETA
+ * Valet sets ETA (simple handler)
  */
 export async function setEta(req, res) {
   const { ticketId } = req.params;
@@ -100,13 +98,9 @@ export async function setEta(req, res) {
     return res.status(403).json({ message: "Not authorized for this ticket" });
 
   const current = ticket.status;
-  const toStatus = { 2: STATUSES.ETA_2, 5: STATUSES.ETA_5, 10: STATUSES.ETA_10 }[Number(eta)];
-
-  if (!allowedTransition(current, toStatus))
-    return res.status(422).json({ message: `Cannot set ETA from ${current}` });
+  const toStatus = current; // ETA doesn't necessarily change status in this flow
 
   ticket.etaMinutes = Number(eta);
-  ticket.status = toStatus;
   await ticket.save();
 
   await StatusLog.create({
@@ -117,15 +111,15 @@ export async function setEta(req, res) {
     notes: `ETA set to ${eta} minutes`
   });
 
-  // WhatsApp send
   try {
+    // Keep a simple notification to user for ETA (reuse recallRequest template as generic update if you prefer)
     await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "N/A");
   } catch (err) {
-    console.error("WhatsApp send failed:", err.message);
+    console.error("WhatsApp send failed (eta):", err?.response?.data || err?.message || err);
   }
 
-  emitToLocation(ticket.locationId.toString(), "ticket:eta", { ticketId: ticket._id, eta });
-  res.json({ ticket });
+  emitToLocation(ticket.locationId.toString(), "ticket:eta", { ticketId: ticket._id.toString(), eta });
+  res.json({ ticket: ticket.toObject() });
 }
 
 /**
@@ -142,16 +136,17 @@ export async function markReadyAtGate(req, res) {
     return res.status(403).json({ message: "Not authorized for this ticket" });
 
   const current = ticket.status;
-  if (![STATUSES.ETA_2, STATUSES.ETA_5, STATUSES.ETA_10, STATUSES.RECALLED].includes(current))
+  if (![STATUSES.PARKED, STATUSES.RECALLED].includes(current))
     return res.status(422).json({ message: "Cannot mark ready from current status" });
 
-  ticket.status = STATUSES.READY_AT_GATE;
+  ticket.status = STATUSES.READY_FOR_PICKUP;
+  ticket.recall = false;
   await ticket.save();
 
   await StatusLog.create({
     ticketId: ticket._id,
     from: current,
-    to: STATUSES.READY_AT_GATE,
+    to: STATUSES.READY_FOR_PICKUP,
     actor: `VALET:${valet.email}`,
     notes: "Ready at gate"
   });
@@ -159,15 +154,15 @@ export async function markReadyAtGate(req, res) {
   try {
     await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
   } catch (err) {
-    console.error("WhatsApp send failed:", err.message);
+    console.error("WhatsApp send failed (readyForPickup):", err?.response?.data || err?.message || err);
   }
 
-  emitToLocation(ticket.locationId.toString(), "ticket:ready", { ticketId: ticket._id });
-  res.json({ ticket });
+  emitToLocation(ticket.locationId.toString(), "ticket:ready", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
+  res.json({ ticket: ticket.toObject() });
 }
 
 /**
- * Delivered
+ * Delivered / Dropped
  */
 export async function markDropped(req, res) {
   const { ticketId } = req.params;
@@ -180,19 +175,20 @@ export async function markDropped(req, res) {
   if (ticket.locationId.toString() !== valet.locationId.toString())
     return res.status(403).json({ message: "Not authorized for this ticket" });
 
+  const prev = ticket.status;
   ticket.status = STATUSES.DROPPED;
+  ticket.recall = false;
 
-  // Cash handling
   if (ticket.paymentStatus === PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY && cashReceived) {
-    ticket.paymentStatus = PAYMENT_STATUSES.PAID_CASH;
+    ticket.paymentStatus = PAYMENT_STATUSES.PAID;
   }
 
   await ticket.save();
 
   await StatusLog.create({
     ticketId: ticket._id,
-    from: STATUSES.READY_AT_GATE,
-    to: STATUSES.DROPPED,
+    from: prev,
+    to: ticket.status,
     actor: `VALET:${valet.email}`,
     notes: "Car handed to user"
   });
@@ -200,103 +196,9 @@ export async function markDropped(req, res) {
   try {
     await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
   } catch (err) {
-    console.error("WhatsApp send failed:", err.message);
+    console.error("WhatsApp send failed (delivered):", err?.response?.data || err?.message || err);
   }
 
-  emitToLocation(ticket.locationId.toString(), "ticket:dropped", { ticketId: ticket._id });
-  res.json({ ticket });
-}
-
-/**
- * Payment received
- */
-export async function markPaymentReceived(req, res) {
-  const { ticketId } = req.params;
-  const { method } = req.body;
-  const valet = req.user;
-
-  const ticket = await Ticket.findById(ticketId);
-  if (!ticket) return res.status(404).json({ message: "Ticket not found" });
-
-  if (ticket.locationId.toString() !== valet.locationId.toString())
-    return res.status(403).json({ message: "Not authorized for this ticket" });
-
-  ticket.paymentStatus = method;
-  await ticket.save();
-
-  await StatusLog.create({
-    ticketId: ticket._id,
-    from: ticket.paymentStatus,
-    to: method,
-    actor: `VALET:${valet.email}`,
-    notes: "Payment confirmed by valet"
-  });
-
-  emitToLocation(ticket.locationId.toString(), "ticket:payment", { ticketId: ticket._id, paymentStatus: method });
-  res.json({ ticket });
-}
-
-/**
- * Batch Save Updates
- */
-export async function saveAllUpdates(req, res) {
-  try {
-    const { updates } = req.body;
-    const valet = req.user;
-
-    if (!Array.isArray(updates)) return res.status(400).json({ message: "Invalid updates array" });
-
-    const updated = [];
-
-    for (const change of updates) {
-      const { ticketId, vehicleNumber, etaMinutes, status, paymentStatus } = change;
-      const ticket = await Ticket.findById(ticketId);
-      if (!ticket) continue;
-
-      if (ticket.locationId.toString() !== valet.locationId.toString()) continue;
-
-      const prevStatus = ticket.status;
-      if (vehicleNumber) ticket.vehicleNumber = vehicleNumber;
-      if (etaMinutes) ticket.etaMinutes = etaMinutes;
-      if (status) ticket.status = status;
-      if (paymentStatus) ticket.paymentStatus = paymentStatus;
-
-      await ticket.save();
-      updated.push(ticket);
-
-      // WhatsApp messages
-      switch (ticket.status) {
-        case STATUSES.PARKED:
-          await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes);
-          break;
-
-        case STATUSES.READY_AT_GATE:
-          await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
-          break;
-
-        case STATUSES.RECALLED:
-          await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber);
-          break;
-
-        case STATUSES.DROPPED:
-          await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
-          break;
-      }
-
-      emitToLocation(ticket.locationId.toString(), "ticket:updated", ticket);
-
-      await StatusLog.create({
-        ticketId: ticket._id,
-        from: prevStatus,
-        to: ticket.status,
-        actor: `VALET:${valet.email}`,
-        notes: "Updated in batch save",
-      });
-    }
-
-    res.json({ updated });
-  } catch (err) {
-    console.error("Error in saveAllUpdates:", err);
-    res.status(500).json({ message: "Internal server error" });
-  }
+  emitToLocation(ticket.locationId.toString(), "ticket:dropped", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
+  res.json({ ticket: ticket.toObject() });
 }

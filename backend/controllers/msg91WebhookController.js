@@ -5,68 +5,60 @@ import { emitToLocation } from "../services/socketService.js";
 import MSG91Service from "../services/MSG91Service.js";
 
 /**
- * Robust body parser for MSG91 inbound payload.
- * MSG91 sometimes sends text/plain containing JSON, or key=value, or form-data.
+ * Parse inbound body that may be JSON (sent as text), urlencoded, or object.
  */
 function parseInboundBody(raw) {
   if (!raw) return {};
-  // If already an object, return it
   if (typeof raw === "object") return raw;
 
-  // If string: try JSON
-  if (typeof raw === "string") {
-    const s = raw.trim();
+  const s = String(raw).trim();
 
-    // Try direct JSON
-    try {
-      return JSON.parse(s);
-    } catch (e) {
-      // Not JSON — try urlencoded / key=value pairs
-    }
+  // Try JSON
+  try {
+    return JSON.parse(s);
+  } catch (e) {}
 
-    // Try decode URI style (a=...&b=...)
-    if (s.includes("=") && s.includes("&")) {
-      const obj = {};
-      s.split("&").forEach(pair => {
-        const [k, ...rest] = pair.split("=");
-        if (!k) return;
-        const val = rest.join("=");
-        try {
-          obj[k] = decodeURIComponent(val || "");
-        } catch (e) {
-          obj[k] = val || "";
-        }
-      });
-      // Sometimes MSG91 wraps actual payload in 'payload' key
-      if (obj.payload) {
-        try { return JSON.parse(obj.payload); } catch(e) { return obj; }
+  // urlencoded k=v&k2=v2
+  if (s.includes("=") && s.includes("&")) {
+    const obj = {};
+    s.split("&").forEach((pair) => {
+      const [k, ...rest] = pair.split("=");
+      if (!k) return;
+      const val = rest.join("=");
+      try {
+        obj[k] = decodeURIComponent(val || "");
+      } catch (e) {
+        obj[k] = val || "";
       }
-      return obj;
+    });
+    if (obj.payload) {
+      try {
+        return JSON.parse(obj.payload);
+      } catch (e) {
+        return obj;
+      }
     }
-
-    // Last fallback: return raw string in `message` field
-    return { message: s };
+    return obj;
   }
 
-  return {};
+  return { message: s };
 }
 
 export const handleMsg91Inbound = async (req, res) => {
   try {
-    // req.body may be string (express.text) or parsed object
-    console.log("📥 MSG91 RAW Inbound (raw):", typeof req.body === "string" ? req.body : JSON.stringify(req.body, null, 2));
+    console.log(
+      "📥 MSG91 RAW Inbound (raw):",
+      typeof req.body === "string" ? req.body : JSON.stringify(req.body, null, 2)
+    );
 
     const payload = parseInboundBody(req.body) || {};
     console.log("📥 Normalised Payload:", JSON.stringify(payload, null, 2));
 
+    // Attempt to extract message/button text
     let message = "";
 
-    // =======================================================
-    // A) Handle nested messages array (WhatsApp interactive/button)
-    // =======================================================
     if (Array.isArray(payload.messages) && payload.messages.length) {
       const m = payload.messages[0];
-
       if (m?.interactive?.button_reply) {
         message = m.interactive.button_reply.title || m.interactive.button_reply.id || "";
       } else if (m?.button_reply) {
@@ -78,28 +70,17 @@ export const handleMsg91Inbound = async (req, res) => {
       }
     }
 
-    // =======================================================
-    // B) Top-level button fields fallback
-    // =======================================================
     if (!message) {
       const btn =
         payload?.interactive?.button_reply ||
         payload?.button_reply ||
         payload?.button ||
         payload?.btn;
-
       if (btn) {
-        if (typeof btn === "object") {
-          message = btn.title || btn.id || JSON.stringify(btn);
-        } else {
-          message = String(btn);
-        }
+        message = typeof btn === "object" ? (btn.title || btn.id || JSON.stringify(btn)) : String(btn);
       }
     }
 
-    // =======================================================
-    // C) Final fallback — plain text fields
-    // =======================================================
     if (!message) {
       message =
         payload?.message ||
@@ -113,20 +94,14 @@ export const handleMsg91Inbound = async (req, res) => {
     message = String(message || "").trim();
     const lower = message.toLowerCase();
 
-    // Normalize common recall button texts to canonical string
-    if (
-      lower.includes("vehicle") ||
-      lower.includes("get") ||
-      lower.includes("recall")
-    ) {
+    // Normalize recall button text
+    if (lower.includes("vehicle") || lower.includes("get") || lower.includes("recall")) {
       message = "get my vehicle";
     }
 
     console.log("📝 FINAL PARSED MESSAGE:", message);
 
-    // =======================================================
-    // Extract phone — try many shapes
-    // =======================================================
+    // Extract phone from many possible fields
     let from =
       payload?.from ||
       payload?.mobile ||
@@ -134,28 +109,23 @@ export const handleMsg91Inbound = async (req, res) => {
       payload?.phone ||
       payload?.customerNumber ||
       payload?.contacts?.[0]?.wa_id ||
-      payload?.contacts?.[0]?.profile?.phone ||
       payload?.messages?.[0]?.from ||
       "";
 
-    // If payload came as key/value map where sender is inside messages[0].contacts
     if (!from && Array.isArray(payload?.messages) && payload.messages[0]) {
       from = payload.messages[0]?.from || payload.messages[0]?.contacts?.[0]?.wa_id || "";
     }
 
     const phone = String(from || "").replace(/\D/g, "");
-
     if (!phone) {
       console.log("❌ NO PHONE IN PAYLOAD");
       return res.status(200).send("NO_PHONE");
     }
 
-    // =======================================================
-    // Find the latest active ticket for this phone (not finalised)
-    // =======================================================
+    // Find latest active ticket for phone (exclude final states)
     const ticket = await Ticket.findOne({
       phone,
-      status: { $nin: ["COMPLETED", "DELIVERED"] },
+      status: { $nin: ["DROPPED"] }, // treat DROPPED as final in this unpaid flow
     }).sort({ createdAt: -1 });
 
     if (!ticket) {
@@ -163,50 +133,39 @@ export const handleMsg91Inbound = async (req, res) => {
       return res.status(200).send("NO_ACTIVE_TICKET");
     }
 
-    // =======================================================
-    // Handle "Get my vehicle" recall
-    // =======================================================
+    // === HANDLE: Get My Vehicle (user pressed button) ===
     if (message === "get my vehicle") {
-      console.log("🚗 Recall triggered for", ticket._id);
+      console.log("🚗 Recall BUTTON pressed by user for ticket", ticket._id);
 
-      ticket.status = "RECALLED";
+      // DO NOT change ticket.status. Only mark recall flag and emit a notification.
       ticket.recall = true;
       await ticket.save();
 
-      // Emit full ticket object to valets (frontend expects full ticket)
-      emitToLocation(String(ticket.locationId), "ticket:recalled", ticket.toObject());
-      emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
+      // Emit notification payload expected by frontend: { ticketId, ticket }
+      const emitPayload = { ticketId: ticket._id.toString(), ticket: ticket.toObject() };
+      emitToLocation(String(ticket.locationId), "ticket:recalled", emitPayload);
+      emitToLocation(String(ticket.locationId), "ticket:updated", emitPayload);
 
-      try {
-        await MSG91Service.recallRequest(
-          ticket.phone,
-          ticket.vehicleNumber || "your car",
-          ticket.etaMinutes || "few"
-        );
-      } catch (err) {
-        console.error("MSG91 recallRequest error:", err?.response?.data || err);
-      }
+      // Important: do NOT send recall WhatsApp template automatically here.
+      // Valet must manually set status to RECALLED and click Save to trigger the template.
+      // (This prevents race conditions and ensures valet confirmation.)
 
-      return res.status(200).send("RECALL_OK");
+      return res.status(200).send("RECALL_NOTIFIED");
     }
 
-    // =======================================================
-    // CASH reply
-    // =======================================================
+    // === CASH ===
     if (lower.includes("cash")) {
       ticket.paymentStatus = PAYMENT_STATUSES.CASH;
       await ticket.save();
-      emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
+      emitToLocation(String(ticket.locationId), "ticket:updated", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
       return res.status(200).send("CASH_OK");
     }
 
-    // =======================================================
-    // PAYMENT confirmation reply
-    // =======================================================
+    // === PAYMENT CONFIRM ===
     if (lower.includes("paid") || lower.includes("done")) {
       ticket.paymentStatus = PAYMENT_STATUSES.PAID;
       await ticket.save();
-      emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
+      emitToLocation(String(ticket.locationId), "ticket:updated", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
 
       try {
         await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
@@ -217,7 +176,7 @@ export const handleMsg91Inbound = async (req, res) => {
       return res.status(200).send("PAYMENT_OK");
     }
 
-    // If we didn't match anything, acknowledge — don't treat as error
+    // otherwise acknowledge
     return res.status(200).send("IGNORED");
   } catch (err) {
     console.error("❌ MSG91 webhook error", err);

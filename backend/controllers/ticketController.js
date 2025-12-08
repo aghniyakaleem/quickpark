@@ -24,19 +24,19 @@ export async function createTicketPublic(req, res) {
       ticketShortId: ticketShort,
       locationId: location._id,
       phone: phone.replace(/\D/g, ""),
-      status: STATUSES.AWAITING_VEHICLE_NUMBER,
+      status: STATUSES.AWAITING_VEHICLE,
       paymentAmount: location.paymentAmount || 20,
     });
 
     await StatusLog.create({
       ticketId: ticket._id,
       from: "NONE",
-      to: STATUSES.AWAITING_VEHICLE_NUMBER,
+      to: ticket.status,
       actor: "PUBLIC",
       notes: "Ticket created by public portal",
     });
 
-    // update daily count on location (simple)
+    // daily count update
     const today = new Date();
     const last = location.lastCountDate;
     const sameDay = last && new Date(last).toDateString() === today.toDateString();
@@ -48,7 +48,7 @@ export async function createTicketPublic(req, res) {
     }
     await location.save();
 
-    // best-effort templates
+    // send initial templates
     try {
       await MSG91Service.ticketCreated(ticket.phone, ticketShort, location.name);
       await MSG91Service.carPicked(ticket.phone);
@@ -56,8 +56,8 @@ export async function createTicketPublic(req, res) {
       console.error("MSG91 send failed during ticket creation:", err?.response?.data || err.message || err);
     }
 
-    // emit to valets with full ticket object (frontend expects full object)
-    emitToLocation(String(location._id), "ticket:created", ticket.toObject());
+    // emit to valets with full ticket object
+    emitToLocation(String(location._id), "ticket:created", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
 
     res.json({
       ticket: {
@@ -73,11 +73,11 @@ export async function createTicketPublic(req, res) {
   }
 }
 
-// Recall request from public endpoint
+// Public recall endpoint (web)
 export async function recallRequestPublic(req, res) {
   try {
     const { slug } = req.params;
-    const { ticketShortId, button } = req.body;
+    const { ticketShortId } = req.body;
 
     if (!ticketShortId) return res.status(422).json({ message: "ticketShortId required" });
 
@@ -87,69 +87,30 @@ export async function recallRequestPublic(req, res) {
     const ticket = await Ticket.findOne({ ticketShortId, locationId: location._id });
     if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
-    // payment flow if required
-    if (location.paymentRequired && ticket.paymentStatus === PAYMENT_STATUSES.UNPAID) {
-      const amount = location.paymentAmount || ticket.paymentAmount || 20;
-      if (button === "pay_online") {
-        ticket.paymentStatus = PAYMENT_STATUSES.PAID;
-        ticket.paymentProvider = "MSG91_LINK";
-        await ticket.save();
-
-        try {
-          await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
-        } catch (e) {
-          console.error("paymentConfirmation error:", e);
-        }
-      } else if (button === "pay_cash") {
-        ticket.paymentStatus = PAYMENT_STATUSES.CASH;
-        await ticket.save();
-        try {
-          await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
-        } catch (e) {
-          console.error("paymentRequest error:", e);
-        }
-      } else {
-        try {
-          await MSG91Service.paymentRequest(ticket.phone, amount, ticket.ticketShortId);
-        } catch (e) {
-          console.error("paymentRequest error:", e);
-        }
-        return res.json({ ok: true, message: "Payment requested" });
-      }
-    }
-
-    // normal recall
-    const prevStatus = ticket.status;
-    ticket.status = STATUSES.RECALLED;
+    // Mark recall flag but do NOT change status
     ticket.recall = true;
     await ticket.save();
 
     await StatusLog.create({
       ticketId: ticket._id,
-      from: prevStatus,
-      to: STATUSES.RECALLED,
+      from: ticket.status,
+      to: ticket.status,
       actor: "PUBLIC",
-      notes: "Recall requested",
+      notes: "Recall requested (notification only)",
     });
 
-    // notify valets with explicit id + full ticket object
-    emitToLocation(String(location._id), "ticket:recalled", ticket.toObject());
-    emitToLocation(String(location._id), "ticket:updated", ticket.toObject());
+    emitToLocation(String(location._id), "ticket:recalled", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
+    emitToLocation(String(location._id), "ticket:updated", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
 
-    try {
-      await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "your car", ticket.etaMinutes || "few");
-    } catch (err) {
-      console.error("MSG91 recall send failed:", err?.response?.data || err.message || err);
-    }
-
-    res.json({ ok: true, message: "Recall requested" });
+    // do not send recall template here — valet must confirm and send
+    res.json({ ok: true, message: "Recall requested (valet notified)" });
   } catch (err) {
     console.error("Error in recallRequestPublic:", err);
     res.status(500).json({ message: "Internal server error" });
   }
 }
 
-// Valet update endpoint (used by valet dashboard Save)
+// Valet update endpoint
 export async function valetUpdateTicket(req, res) {
   try {
     const { ticketId } = req.params;
@@ -166,14 +127,15 @@ export async function valetUpdateTicket(req, res) {
     // Accept status only if it's one of STATUSES values
     if (status !== undefined && Object.values(STATUSES).includes(status)) {
       ticket.status = status;
-      // maintain recall boolean
+
+      // when valet confirms RECALLED, ensure recall flag exists
       if (status === STATUSES.RECALLED) ticket.recall = true;
       if (status === STATUSES.READY_FOR_PICKUP || status === STATUSES.PARKED) ticket.recall = false;
     }
 
-    if (paymentStatus !== undefined && Object.values(PAYMENT_STATUSES).includes(paymentStatus))
+    if (paymentStatus !== undefined && Object.values(PAYMENT_STATUSES).includes(paymentStatus)) {
       ticket.paymentStatus = paymentStatus;
-
+    }
     if (paymentProvider !== undefined) ticket.paymentProvider = paymentProvider;
 
     await ticket.save();
@@ -186,30 +148,30 @@ export async function valetUpdateTicket(req, res) {
       notes: "Valet updated ticket",
     });
 
-    // Emit full ticket object (frontend expects full ticket)
-    emitToLocation(String(ticket.locationId), "ticket:updated", ticket.toObject());
+    const emitPayload = { ticketId: ticket._id.toString(), ticket: ticket.toObject() };
+    emitToLocation(String(ticket.locationId), "ticket:updated", emitPayload);
 
-    // send appropriate WhatsApp templates
+    // send WhatsApp templates only when valet actually set statuses
     try {
       switch (ticket.status) {
         case STATUSES.PARKED:
           await MSG91Service.carParked(ticket.phone, ticket.vehicleNumber, ticket.etaMinutes || "N/A");
           break;
         case STATUSES.RECALLED:
+          // valet confirmed recall -> send recall template
           await MSG91Service.recallRequest(ticket.phone, ticket.vehicleNumber || "Unknown", ticket.etaMinutes || "few");
           break;
         case STATUSES.READY_FOR_PICKUP:
           await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
           break;
-        case STATUSES.COMPLETED:
-        case STATUSES.DELIVERED:
+        case STATUSES.DROPPED:
           await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
           break;
         default:
           break;
       }
 
-      // payment notifications
+      // payment notifications (kept for future)
       if (paymentStatus) {
         if (paymentStatus === PAYMENT_STATUSES.PAID) {
           await MSG91Service.paymentConfirmation(ticket.phone, ticket.ticketShortId);
@@ -228,13 +190,12 @@ export async function valetUpdateTicket(req, res) {
   }
 }
 
-// get tickets by location
+// get tickets by location (used by dashboard fetch)
 export async function getTicketsByLocation(req, res) {
   try {
     const { locationId } = req.params;
     if (!locationId) return res.status(400).json({ message: "Location ID required" });
 
-    // TTL on ticket collection will remove older than 24h
     const tickets = await Ticket.find({ locationId }).sort({ createdAt: -1 }).lean();
     res.json({ tickets });
   } catch (err) {

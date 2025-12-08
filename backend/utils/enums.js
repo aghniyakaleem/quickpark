@@ -1,26 +1,25 @@
-// utils/enums.js
+// backend/utils/enums.js
 
-// roles (keep for completeness)
+// roles (kept for completeness)
 export const ROLES = {
   SUPER_ADMIN: "SUPER_ADMIN",
   VALET: "VALET",
 };
 
-// ticket statuses (used across controllers)
+// ticket statuses — final set per your confirmation
 export const STATUSES = {
-  AWAITING_VEHICLE_NUMBER: "AWAITING_VEHICLE_NUMBER",
+  AWAITING_VEHICLE: "AWAITING_VEHICLE",
   PARKED: "PARKED",
-  READY_FOR_PICKUP: "READY_FOR_PICKUP",
   RECALLED: "RECALLED",
-  DELIVERED: "DELIVERED",
+  READY_FOR_PICKUP: "READY_FOR_PICKUP",
   DROPPED: "DROPPED",
 };
 
-// payment statuses
+// payment statuses (unchanged, keep available values)
 export const PAYMENT_STATUSES = {
   UNPAID: "UNPAID",
-  PAID: "PAID",               // generic paid (could be used for offline or online)
-  CASH: "CASH",               // customer chose cash (valet should collect)
-  PAID_ONLINE: "PAID_ONLINE", // specifically paid online (gateway)
-  PAY_CASH_ON_DELIVERY: "PAY_CASH_ON_DELIVERY", // alias if you want
+  PAID: "PAID",
+  CASH: "CASH",
+  PAID_ONLINE: "PAID_ONLINE",
+  PAY_CASH_ON_DELIVERY: "PAY_CASH_ON_DELIVERY",
 };
