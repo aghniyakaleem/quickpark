@@ -5,7 +5,7 @@ const transitions = {
     ETA_2: ["READY_AT_GATE"],
     ETA_5: ["READY_AT_GATE"],
     ETA_10: ["READY_AT_GATE"],
-    READY_AT_GATE: ["DROPPED"],
+    READY_AT_GATE: ["DELIVERED"],
   };
   
   export const validateTransition = (current, next) => {

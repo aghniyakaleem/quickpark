@@ -12,7 +12,7 @@ export const STATUSES = {
   PARKED: "PARKED",
   RECALLED: "RECALLED",
   READY_FOR_PICKUP: "READY_FOR_PICKUP",
-  DROPPED: "DROPPED",
+  DELIVERED: "DELIVERED",
 };
 
 // payment statuses (unchanged, keep available values)

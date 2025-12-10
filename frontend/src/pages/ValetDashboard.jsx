@@ -6,23 +6,17 @@ import toast from "react-hot-toast";
 import useSocket from "../hooks/useSocket";
 
 function normalizeIncomingPayload(payload) {
-  // payload may be:
-  // 1) full ticket object (old)
-  // 2) { ticketId, ticket }
-  // 3) { ticketId, ... } or { ticket: {...} }
   if (!payload) return null;
 
   if (payload.ticket && payload.ticketId) {
     return { id: String(payload.ticketId), ticket: payload.ticket };
   }
 
-  // If the server sent a plain ticket object
   if (payload._id || payload.id) {
     const id = String(payload._id || payload.id);
     return { id, ticket: payload };
   }
 
-  // If server sent only ticketId string and maybe ticket nested
   if (payload.ticketId && !payload.ticket) {
     return { id: String(payload.ticketId), ticket: null };
   }
@@ -38,6 +32,7 @@ export default function ValetDashboard() {
   const [loading, setLoading] = useState(true);
   const [pendingUpdates, setPendingUpdates] = useState({});
   const [highlighted, setHighlighted] = useState(null);
+  const [statusFilter, setStatusFilter] = useState("ALL"); // ⭐ NEW FILTER STATE
 
   const locationId = user?.locationId || null;
   const rowRefs = useRef({});
@@ -63,84 +58,86 @@ export default function ValetDashboard() {
     fetchData();
   }, [locationId]);
 
-  // 🔊 Play alert sound
+  // 🔊 Beep on recall
   const playBeep = () => {
     try {
-      const audio = new Audio("/alert.mp3"); // put this file in public folder
+      const audio = new Audio("/alert.mp3");
       audio.play().catch(() => {});
     } catch (e) {}
   };
 
-  // Handlers for socket events
-  const socketHandlers = useMemo(() => ({
-    "ticket:updated": (payload) => {
-      const normalized = normalizeIncomingPayload(payload) || {};
-      const id = normalized?.id || (payload?._id && String(payload._id));
-      const updatedTicket = normalized?.ticket || payload?.ticket || payload;
+  // SOCKET HANDLERS
+  const socketHandlers = useMemo(
+    () => ({
+      "ticket:updated": (payload) => {
+        const normalized = normalizeIncomingPayload(payload) || {};
+        const id = normalized?.id || (payload?._id && String(payload._id));
+        const updatedTicket = normalized?.ticket || payload?.ticket || payload;
 
-      if (!id && !updatedTicket) return;
+        if (!id && !updatedTicket) return;
 
-      setTickets((prev) => {
-        // if we have a ticket object with _id use that
-        if (updatedTicket && updatedTicket._id) {
-          const rid = String(updatedTicket._id);
-          return prev.map((t) => (String(t._id) === rid ? updatedTicket : t));
+        setTickets((prev) => {
+          if (updatedTicket && updatedTicket._id) {
+            const rid = String(updatedTicket._id);
+            return prev.map((t) => (String(t._id) === rid ? updatedTicket : t));
+          }
+          return prev.map((t) =>
+            String(t._id) === String(id) ? (updatedTicket || { ...t, ...payload }) : t
+          );
+        });
+
+        try {
+          const short =
+            (updatedTicket && updatedTicket.ticketShortId) ||
+            (payload?.ticket?.ticketShortId) ||
+            "";
+          toast.success(`Ticket updated${short ? ": " + short : ""}`);
+        } catch (e) {}
+      },
+
+      "ticket:created": (payload) => {
+        const normalized = normalizeIncomingPayload(payload) || {};
+        const newTicket = normalized.ticket || payload;
+        if (!newTicket) return;
+
+        setTickets((prev) => [...prev, newTicket]);
+        toast.success(`New ticket created: ${newTicket.ticketShortId || ""}`);
+      },
+
+      "ticket:recalled": (payload) => {
+        const normalized = normalizeIncomingPayload(payload) || {};
+        const id = normalized?.id || (payload?._id && String(payload._id));
+        const ticketObj = normalized?.ticket || payload?.ticket || payload;
+
+        if (ticketObj && ticketObj._id) {
+          setTickets((prev) =>
+            prev.map((t) =>
+              String(t._id) === String(ticketObj._id) ? ticketObj : t
+            )
+          );
         }
-        // otherwise match by id
-        return prev.map((t) => (String(t._id) === String(id) ? (updatedTicket || { ...t, ...payload }) : t));
-      });
 
-      // small toast
-      try {
-        const short = (updatedTicket && updatedTicket.ticketShortId) || (payload && payload.ticket && payload.ticket.ticketShortId) || "";
-        toast.success(`Ticket updated${short ? ": " + short : ""}`);
-      } catch (e) {}
-    },
+        const targetId = id || (ticketObj && String(ticketObj._id));
+        if (targetId) {
+          setHighlighted(targetId);
+          playBeep();
+          toast("🚗 User requested their car!", { icon: "⚠️" });
 
-    "ticket:created": (payload) => {
-      const normalized = normalizeIncomingPayload(payload) || {};
-      const newTicket = normalized.ticket || payload;
-      if (!newTicket) return;
-      setTickets((prev) => [...prev, newTicket]);
-      toast.success(`New ticket created: ${newTicket.ticketShortId || ""}`);
-    },
-
-    "ticket:recalled": (payload) => {
-      // payload may come as { ticketId, ticket } or as ticket object
-      const normalized = normalizeIncomingPayload(payload) || {};
-      const id = normalized?.id || (payload?._id && String(payload._id));
-      const ticketObj = normalized?.ticket || payload?.ticket || payload;
-
-      // Update local tickets array only if a full ticket object is provided
-      if (ticketObj && ticketObj._id) {
-        setTickets((prev) =>
-          prev.map((t) => {
-            if (String(t._id) === String(ticketObj._id)) {
-              return ticketObj;
-            }
-            return t;
-          })
-        );
-      }
-
-      // Highlight + beep + toast — even if we didn't update DB
-      const targetId = id || (ticketObj && String(ticketObj._id));
-      if (targetId) {
-        setHighlighted(targetId);
-        playBeep();
-        toast("🚗 User requested their car!", { icon: "⚠️" });
-
-        // Scroll to that row
-        setTimeout(() => {
-          rowRefs.current[targetId]?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 200);
-      }
-    }
-  }), []);
+          setTimeout(() => {
+            rowRefs.current[targetId]?.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          }, 200);
+        }
+      },
+    }),
+    []
+  );
 
   useSocket(locationId, socketHandlers);
 
-  // Local edits
+  // ⭐ LOCAL EDITS
   const handleLocalChange = (ticketId, field, value) => {
     setPendingUpdates((prev) => ({
       ...prev,
@@ -164,7 +161,10 @@ export default function ValetDashboard() {
       );
 
       const updated = res.data.ticket || res.data;
-      setTickets((prev) => prev.map((t) => (String(t._id) === String(ticketId) ? updated : t)));
+
+      setTickets((prev) =>
+        prev.map((t) => (String(t._id) === String(ticketId) ? updated : t))
+      );
 
       const updatedObj = { ...pendingUpdates };
       delete updatedObj[ticketId];
@@ -180,37 +180,52 @@ export default function ValetDashboard() {
   if (loading) return <div>Loading...</div>;
   if (!location) return <div>No location found.</div>;
 
-  // Render row
+  // ⭐ FILTERED + SORTED TICKETS
+  const filteredTickets = useMemo(() => {
+    if (statusFilter === "ALL") return tickets;
+    return tickets.filter((t) => t.status === statusFilter);
+  }, [tickets, statusFilter]);
+
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    if (a.status === "DELIVERED" && b.status !== "DELIVERED") return 1;
+    if (a.status !== "DELIVERED" && b.status === "DELIVERED") return -1;
+    return 0;
+  });
+
+  // RENDER ROW
   const renderTicketRow = (t) => {
     const id = String(t._id);
+
     return (
       <tr
         key={id}
         ref={(el) => (rowRefs.current[id] = el)}
-        className={
+        className={`transition-all ${
           highlighted === id
             ? "bg-red-200 animate-pulse"
             : t.status === "RECALLED"
             ? "bg-yellow-200"
-            : ""
-        }
+            : t.status === "DELIVERED"
+            ? "bg-gray-200 opacity-60"
+            : "bg-white"
+        }`}
       >
-        <td>{t.ticketShortId}</td>
-        <td>{t.phone?.replace(/.(?=.{4})/g, "*") || "N/A"}</td>
+        <td className="px-4 py-2 font-semibold">{t.ticketShortId}</td>
+        <td className="px-4 py-2">{t.phone?.replace(/.(?=.{4})/g, "*") || "N/A"}</td>
 
-        <td>
+        <td className="px-4 py-2">
           <input
             defaultValue={t.vehicleNumber}
             onChange={(e) => handleLocalChange(id, "vehicleNumber", e.target.value)}
-            className="border p-1"
+            className="border p-2 rounded w-full"
           />
         </td>
 
-        <td>
+        <td className="px-4 py-2">
           <select
             defaultValue={t.etaMinutes || ""}
             onChange={(e) => handleLocalChange(id, "etaMinutes", Number(e.target.value))}
-            className="border p-1"
+            className="border p-2 rounded w-full"
           >
             <option value="">Select ETA</option>
             <option value={2}>2 mins</option>
@@ -219,28 +234,26 @@ export default function ValetDashboard() {
           </select>
         </td>
 
-        <td>
+        <td className="px-4 py-2">
           <select
             defaultValue={t.status}
             onChange={(e) => handleLocalChange(id, "status", e.target.value)}
-            className="border p-1"
+            className="border p-2 rounded w-full"
           >
             <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
             <option value="PARKED">Parked</option>
-            <option value="READY_FOR_PICKUP">Ready for Pickup</option>
             <option value="RECALLED">Recalled</option>
-            <option value="DROPPED">Dropped</option>
+            <option value="READY_FOR_PICKUP">Ready for Pickup</option>
             <option value="DELIVERED">Delivered</option>
-            {/* add other statuses if needed */}
           </select>
         </td>
 
         {location.paymentRequired && (
-          <td>
+          <td className="px-4 py-2">
             <select
               defaultValue={t.paymentStatus}
               onChange={(e) => handleLocalChange(id, "paymentStatus", e.target.value)}
-              className="border p-1"
+              className="border p-2 rounded w-full"
             >
               <option value="UNPAID">Unpaid</option>
               <option value="PAID">Paid</option>
@@ -249,8 +262,11 @@ export default function ValetDashboard() {
           </td>
         )}
 
-        <td>
-          <button onClick={() => handleSaveTicket(id)} className="bg-blue-600 text-white px-3 py-1 rounded">
+        <td className="px-4 py-2">
+          <button
+            onClick={() => handleSaveTicket(id)}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow"
+          >
             Save
           </button>
         </td>
@@ -260,22 +276,51 @@ export default function ValetDashboard() {
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Valet Dashboard – {location.name}</h1>
+      <h1 className="text-3xl font-bold mb-2 text-gray-800">
+        Valet Dashboard – {location.name}
+      </h1>
 
-      <table className="w-full border border-gray-300 mb-4">
-        <thead className="bg-gray-100">
-          <tr>
-            <th>Ticket</th>
-            <th>Phone</th>
-            <th>Vehicle</th>
-            <th>ETA</th>
-            <th>Status</th>
-            {location.paymentRequired && <th>Payment</th>}
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>{tickets.map(renderTicketRow)}</tbody>
-      </table>
+      {/* ⭐ DAILY COUNTER */}
+      <p className="text-xl font-semibold text-gray-600 mb-6">
+        Cars processed today: <span className="text-blue-600">{tickets.length}</span>
+      </p>
+
+      {/* ⭐ FILTER UI */}
+      <div className="flex gap-4 mb-6">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="border p-3 rounded-lg shadow bg-white text-gray-700"
+        >
+          <option value="ALL">All Tickets</option>
+          <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
+          <option value="PARKED">Parked</option>
+          <option value="RECALLED">Recalled</option>
+          <option value="READY_FOR_PICKUP">Ready for Pickup</option>
+          <option value="DELIVERED">Delivered</option>
+        </select>
+      </div>
+
+      {/* TABLE */}
+      <div className="overflow-x-auto shadow-lg rounded-xl">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-100 text-gray-700 border-b">
+            <tr>
+              <th className="px-4 py-3 text-left">Ticket</th>
+              <th className="px-4 py-3 text-left">Phone</th>
+              <th className="px-4 py-3 text-left">Vehicle</th>
+              <th className="px-4 py-3 text-left">ETA</th>
+              <th className="px-4 py-3 text-left">Status</th>
+              {location.paymentRequired && (
+                <th className="px-4 py-3 text-left">Payment</th>
+              )}
+              <th className="px-4 py-3 text-left">Action</th>
+            </tr>
+          </thead>
+
+          <tbody>{sortedTickets.map(renderTicketRow)}</tbody>
+        </table>
+      </div>
     </div>
   );
 }

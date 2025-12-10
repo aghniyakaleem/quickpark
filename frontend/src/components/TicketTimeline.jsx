@@ -6,7 +6,7 @@ const steps = [
   "RECALLED",
   "ETA",
   "READY_AT_GATE",
-  "DROPPED",
+  "DELIVERED",
 ];
 
 export default function TicketTimeline({ status }) {

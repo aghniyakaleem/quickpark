@@ -164,7 +164,7 @@ export async function valetUpdateTicket(req, res) {
         case STATUSES.READY_FOR_PICKUP:
           await MSG91Service.readyForPickup(ticket.phone, ticket.vehicleNumber);
           break;
-        case STATUSES.DROPPED:
+        case STATUSES.DELIVERED:
           await MSG91Service.delivered(ticket.phone, ticket.vehicleNumber);
           break;
         default:

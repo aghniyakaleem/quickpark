@@ -133,7 +133,7 @@ export const handleMsg91Inbound = async (req, res) => {
     // Find latest active ticket for phone (exclude final states)
     const ticket = await Ticket.findOne({
       phone,
-      status: { $nin: ["DROPPED"] }, // treat DROPPED as final in this unpaid flow
+      status: { $nin: ["DELIVERED"] }, // treat DELIVERED as final in this unpaid flow
     }).sort({ createdAt: -1 });
 
     if (!ticket) {

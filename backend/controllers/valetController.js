@@ -9,10 +9,10 @@ import { emitToLocation } from "../services/socketService.js";
 function allowedTransition(current, next) {
   const rules = {
     [STATUSES.AWAITING_VEHICLE]: [STATUSES.PARKED, STATUSES.AWAITING_VEHICLE],
-    [STATUSES.PARKED]: [STATUSES.RECALLED, STATUSES.DROPPED, STATUSES.PARKED, STATUSES.READY_FOR_PICKUP],
+    [STATUSES.PARKED]: [STATUSES.RECALLED, STATUSES.DELIVERED, STATUSES.PARKED, STATUSES.READY_FOR_PICKUP],
     [STATUSES.RECALLED]: [STATUSES.READY_FOR_PICKUP],
-    [STATUSES.READY_FOR_PICKUP]: [STATUSES.DROPPED],
-    [STATUSES.DROPPED]: []
+    [STATUSES.READY_FOR_PICKUP]: [STATUSES.DELIVERED],
+    [STATUSES.DELIVERED]: []
   };
   const allowed = rules[current] || [];
   return allowed.includes(next);
@@ -162,9 +162,9 @@ export async function markReadyAtGate(req, res) {
 }
 
 /**
- * Delivered / Dropped
+ * Delivered / DELIVERED
  */
-export async function markDropped(req, res) {
+export async function markDelivered(req, res) {
   const { ticketId } = req.params;
   const { cashReceived } = req.body;
   const valet = req.user;
@@ -176,7 +176,7 @@ export async function markDropped(req, res) {
     return res.status(403).json({ message: "Not authorized for this ticket" });
 
   const prev = ticket.status;
-  ticket.status = STATUSES.DROPPED;
+  ticket.status = STATUSES.DELIVERED;
   ticket.recall = false;
 
   if (ticket.paymentStatus === PAYMENT_STATUSES.PAY_CASH_ON_DELIVERY && cashReceived) {
@@ -199,6 +199,6 @@ export async function markDropped(req, res) {
     console.error("WhatsApp send failed (delivered):", err?.response?.data || err?.message || err);
   }
 
-  emitToLocation(ticket.locationId.toString(), "ticket:dropped", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
+  emitToLocation(ticket.locationId.toString(), "ticket:DELIVERED", { ticketId: ticket._id.toString(), ticket: ticket.toObject() });
   res.json({ ticket: ticket.toObject() });
 }

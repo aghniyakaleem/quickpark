@@ -5,7 +5,7 @@ import {
   setVehicleAndPark,
   setEta,
   markReadyAtGate,
-  markDropped
+  markDelivered
 } from "../controllers/valetController.js";
 import { body } from "express-validator";
 import { handleValidation } from "../middleware/validate.js";
@@ -32,10 +32,10 @@ router.post("/tickets/:ticketId/set-eta",
 
 router.post("/tickets/:ticketId/ready", markReadyAtGate);
 
-router.post("/tickets/:ticketId/dropped",
+router.post("/tickets/:ticketId/delivered",
   body("cashReceived").optional().isBoolean(),
   handleValidation,
-  markDropped
+  markDelivered
 );
 // Removed the recalled-handled route since it's not defined/needed
 
