@@ -1,4 +1,3 @@
-// frontend/src/pages/ValetDashboard.jsx
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import axios from "axios";
@@ -32,12 +31,11 @@ export default function ValetDashboard() {
   const [loading, setLoading] = useState(true);
   const [pendingUpdates, setPendingUpdates] = useState({});
   const [highlighted, setHighlighted] = useState(null);
-  const [statusFilter, setStatusFilter] = useState("ALL"); // ⭐ NEW FILTER STATE
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   const locationId = user?.locationId || null;
   const rowRefs = useRef({});
 
-  // Fetch location + tickets
   useEffect(() => {
     if (!locationId) return;
 
@@ -58,7 +56,6 @@ export default function ValetDashboard() {
     fetchData();
   }, [locationId]);
 
-  // 🔊 Beep on recall
   const playBeep = () => {
     try {
       const audio = new Audio("/alert.mp3");
@@ -66,7 +63,6 @@ export default function ValetDashboard() {
     } catch (e) {}
   };
 
-  // SOCKET HANDLERS
   const socketHandlers = useMemo(
     () => ({
       "ticket:updated": (payload) => {
@@ -86,13 +82,12 @@ export default function ValetDashboard() {
           );
         });
 
-        try {
-          const short =
-            (updatedTicket && updatedTicket.ticketShortId) ||
-            (payload?.ticket?.ticketShortId) ||
-            "";
-          toast.success(`Ticket updated${short ? ": " + short : ""}`);
-        } catch (e) {}
+        const short =
+          updatedTicket?.ticketShortId ||
+          payload?.ticket?.ticketShortId ||
+          "";
+
+        toast.success(`Ticket updated${short ? ": " + short : ""}`);
       },
 
       "ticket:created": (payload) => {
@@ -106,7 +101,7 @@ export default function ValetDashboard() {
 
       "ticket:recalled": (payload) => {
         const normalized = normalizeIncomingPayload(payload) || {};
-        const id = normalized?.id || (payload?._id && String(payload._id));
+        const id = normalized?.id;
         const ticketObj = normalized?.ticket || payload?.ticket || payload;
 
         if (ticketObj && ticketObj._id) {
@@ -117,7 +112,7 @@ export default function ValetDashboard() {
           );
         }
 
-        const targetId = id || (ticketObj && String(ticketObj._id));
+        const targetId = id || ticketObj?._id;
         if (targetId) {
           setHighlighted(targetId);
           playBeep();
@@ -137,7 +132,6 @@ export default function ValetDashboard() {
 
   useSocket(locationId, socketHandlers);
 
-  // ⭐ LOCAL EDITS
   const handleLocalChange = (ticketId, field, value) => {
     setPendingUpdates((prev) => ({
       ...prev,
@@ -180,11 +174,9 @@ export default function ValetDashboard() {
   if (loading) return <div>Loading...</div>;
   if (!location) return <div>No location found.</div>;
 
-  // ⭐ FILTERED + SORTED TICKETS
-  const filteredTickets = useMemo(() => {
-    if (statusFilter === "ALL") return tickets;
-    return tickets.filter((t) => t.status === statusFilter);
-  }, [tickets, statusFilter]);
+  const filteredTickets = statusFilter === "ALL"
+    ? tickets
+    : tickets.filter((t) => t.status === statusFilter);
 
   const sortedTickets = [...filteredTickets].sort((a, b) => {
     if (a.status === "DELIVERED" && b.status !== "DELIVERED") return 1;
@@ -192,100 +184,16 @@ export default function ValetDashboard() {
     return 0;
   });
 
-  // RENDER ROW
-  const renderTicketRow = (t) => {
-    const id = String(t._id);
-
-    return (
-      <tr
-        key={id}
-        ref={(el) => (rowRefs.current[id] = el)}
-        className={`transition-all ${
-          highlighted === id
-            ? "bg-red-200 animate-pulse"
-            : t.status === "RECALLED"
-            ? "bg-yellow-200"
-            : t.status === "DELIVERED"
-            ? "bg-gray-200 opacity-60"
-            : "bg-white"
-        }`}
-      >
-        <td className="px-4 py-2 font-semibold">{t.ticketShortId}</td>
-        <td className="px-4 py-2">{t.phone?.replace(/.(?=.{4})/g, "*") || "N/A"}</td>
-
-        <td className="px-4 py-2">
-          <input
-            defaultValue={t.vehicleNumber}
-            onChange={(e) => handleLocalChange(id, "vehicleNumber", e.target.value)}
-            className="border p-2 rounded w-full"
-          />
-        </td>
-
-        <td className="px-4 py-2">
-          <select
-            defaultValue={t.etaMinutes || ""}
-            onChange={(e) => handleLocalChange(id, "etaMinutes", Number(e.target.value))}
-            className="border p-2 rounded w-full"
-          >
-            <option value="">Select ETA</option>
-            <option value={2}>2 mins</option>
-            <option value={5}>5 mins</option>
-            <option value={10}>10 mins</option>
-          </select>
-        </td>
-
-        <td className="px-4 py-2">
-          <select
-            defaultValue={t.status}
-            onChange={(e) => handleLocalChange(id, "status", e.target.value)}
-            className="border p-2 rounded w-full"
-          >
-            <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
-            <option value="PARKED">Parked</option>
-            <option value="RECALLED">Recalled</option>
-            <option value="READY_FOR_PICKUP">Ready for Pickup</option>
-            <option value="DELIVERED">Delivered</option>
-          </select>
-        </td>
-
-        {location.paymentRequired && (
-          <td className="px-4 py-2">
-            <select
-              defaultValue={t.paymentStatus}
-              onChange={(e) => handleLocalChange(id, "paymentStatus", e.target.value)}
-              className="border p-2 rounded w-full"
-            >
-              <option value="UNPAID">Unpaid</option>
-              <option value="PAID">Paid</option>
-              <option value="CASH">Cash</option>
-            </select>
-          </td>
-        )}
-
-        <td className="px-4 py-2">
-          <button
-            onClick={() => handleSaveTicket(id)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow"
-          >
-            Save
-          </button>
-        </td>
-      </tr>
-    );
-  };
-
   return (
     <div className="p-6">
       <h1 className="text-3xl font-bold mb-2 text-gray-800">
         Valet Dashboard – {location.name}
       </h1>
 
-      {/* ⭐ DAILY COUNTER */}
       <p className="text-xl font-semibold text-gray-600 mb-6">
         Cars processed today: <span className="text-blue-600">{tickets.length}</span>
       </p>
 
-      {/* ⭐ FILTER UI */}
       <div className="flex gap-4 mb-6">
         <select
           value={statusFilter}
@@ -301,7 +209,7 @@ export default function ValetDashboard() {
         </select>
       </div>
 
-      {/* TABLE */}
+      {/* ⭐ SINGLE CLEAN TABLE (no nesting!) */}
       <div className="overflow-x-auto shadow-lg rounded-xl">
         <table className="w-full border-collapse">
           <thead className="bg-gray-100 text-gray-700 border-b">
@@ -318,7 +226,89 @@ export default function ValetDashboard() {
             </tr>
           </thead>
 
-          <tbody>{sortedTickets.map(renderTicketRow)}</tbody>
+          <tbody>
+            {sortedTickets.map((t) => {
+              const id = String(t._id);
+              return (
+                <tr
+                  key={id}
+                  ref={(el) => (rowRefs.current[id] = el)}
+                  className={`transition-all ${
+                    highlighted === id
+                      ? "bg-red-200 animate-pulse"
+                      : t.status === "RECALLED"
+                      ? "bg-yellow-200"
+                      : t.status === "DELIVERED"
+                      ? "bg-gray-300 text-gray-500 line-through"
+                      : " "
+                  }`}
+                >
+                  <td className="px-4 py-2 font-semibold">{t.ticketShortId}</td>
+                  <td className="px-4 py-2">
+                    {t.phone?.replace(/.(?=.{4})/g, "*") || "N/A"}
+                  </td>
+
+                  <td className="px-4 py-2">
+                    <input
+                      defaultValue={t.vehicleNumber}
+                      onChange={(e) => handleLocalChange(id, "vehicleNumber", e.target.value)}
+                      className="border p-2 rounded w-full"
+                    />
+                  </td>
+
+                  <td className="px-4 py-2">
+                    <select
+                      defaultValue={t.etaMinutes || ""}
+                      onChange={(e) => handleLocalChange(id, "etaMinutes", Number(e.target.value))}
+                      className="border p-2 rounded w-full"
+                    >
+                      <option value="">Select ETA</option>
+                      <option value={2}>2 mins</option>
+                      <option value={5}>5 mins</option>
+                      <option value={10}>10 mins</option>
+                    </select>
+                  </td>
+
+                  <td className="px-4 py-2">
+                    <select
+                      defaultValue={t.status}
+                      onChange={(e) => handleLocalChange(id, "status", e.target.value)}
+                      className="border p-2 rounded w-full"
+                    >
+                      <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
+                      <option value="PARKED">Parked</option>
+                      <option value="RECALLED">Recalled</option>
+                      <option value="READY_FOR_PICKUP">Ready for Pickup</option>
+                      <option value="DELIVERED">Delivered</option>
+                    </select>
+                  </td>
+
+                  {location.paymentRequired && (
+                    <td className="px-4 py-2">
+                      <select
+                        defaultValue={t.paymentStatus}
+                        onChange={(e) => handleLocalChange(id, "paymentStatus", e.target.value)}
+                        className="border p-2 rounded w-full"
+                      >
+                        <option value="UNPAID">Unpaid</option>
+                        <option value="PAID">Paid</option>
+                        <option value="CASH">Cash</option>
+                      </select>
+                    </td>
+                  )}
+
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => handleSaveTicket(id)}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded shadow"
+                    >
+                      Save
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
         </table>
       </div>
     </div>
