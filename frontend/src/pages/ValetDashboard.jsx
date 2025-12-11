@@ -30,7 +30,7 @@ export default function ValetDashboard() {
   const [location, setLocation] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pendingUpdates, setPendingUpdates] = useState({});
-  const [highlighted, setHighlighted] = useState(null);
+  const [highlighted, setHighlighted] = useState([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   const locationId = user?.locationId || null;
@@ -114,9 +114,12 @@ export default function ValetDashboard() {
 
         const targetId = id || ticketObj?._id;
         if (targetId) {
-          setHighlighted(targetId);
+          setHighlighted((prev) => {
+            if (prev.includes(targetId)) return prev; // already highlighted
+            return [...prev, targetId];               // add multiple
+          });
           playBeep();
-          toast("🚗 User requested their car!", { icon: "⚠️" });
+          toast("User requested their car!", { icon: "⚠️" });
 
           setTimeout(() => {
             rowRefs.current[targetId]?.scrollIntoView({
@@ -145,7 +148,7 @@ export default function ValetDashboard() {
   const handleSaveTicket = async (ticketId) => {
     const updateData = pendingUpdates[ticketId];
     if (!updateData) return toast("No changes to save");
-
+  
     try {
       const token = localStorage.getItem("token");
       const res = await axios.put(
@@ -153,24 +156,30 @@ export default function ValetDashboard() {
         updateData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-
+  
       const updated = res.data.ticket || res.data;
-
+  
+      // Update UI
       setTickets((prev) =>
         prev.map((t) => (String(t._id) === String(ticketId) ? updated : t))
       );
-
+  
+      // REMOVE highlight **only after success**
+      if (updateData.status === "DELIVERED") {
+        setHighlighted((prev) => prev.filter((hid) => hid !== ticketId));
+      }
+  
+      // Clear pending updates
       const updatedObj = { ...pendingUpdates };
       delete updatedObj[ticketId];
       setPendingUpdates(updatedObj);
-
+  
       toast.success("Saved");
     } catch (err) {
       console.error(err);
       toast.error("Failed to save");
     }
   };
-
   if (loading) return <div>Loading...</div>;
   if (!location) return <div>No location found.</div>;
 
@@ -198,8 +207,19 @@ export default function ValetDashboard() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border p-3 rounded-lg shadow bg-white text-gray-700"
-        >
+          className="
+    border border-gray-300
+    px-4 py-3
+    rounded-xl
+    bg-white
+    text-gray-800
+    shadow
+    font-semibold
+    focus:outline-none
+    focus:ring-2 focus:ring-blue-400
+    transition-all
+  "
+>
           <option value="ALL">All Tickets</option>
           <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
           <option value="PARKED">Parked</option>
@@ -234,7 +254,7 @@ export default function ValetDashboard() {
                   key={id}
                   ref={(el) => (rowRefs.current[id] = el)}
                   className={`transition-all ${
-                    highlighted === id
+                    highlighted.includes(id)
                       ? "bg-red-200 animate-pulse"
                       : t.status === "RECALLED"
                       ? "bg-yellow-200"
@@ -273,7 +293,17 @@ export default function ValetDashboard() {
                     <select
                       defaultValue={t.status}
                       onChange={(e) => handleLocalChange(id, "status", e.target.value)}
-                      className="border p-2 rounded w-full"
+                      className="
+    border border-gray-300
+    p-2 rounded-lg
+    w-full
+    bg-white
+    text-gray-800
+    shadow-sm
+    focus:outline-none
+    focus:ring-2 focus:ring-blue-400
+    transition-all
+  "
                     >
                       <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
                       <option value="PARKED">Parked</option>
