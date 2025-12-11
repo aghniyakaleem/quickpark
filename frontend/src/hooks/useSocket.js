@@ -73,6 +73,10 @@ export default function useSocket(locationId, handlers = {}) {
 
     // Attach provided handlers (component-specific)
     Object.entries(handlers).forEach(([event, fn]) => {
+      // Remove ALL existing listeners for this event
+      socket.removeAllListeners(event);
+    
+      // Attach a clean single listener
       socket.on(event, fn);
     });
 
