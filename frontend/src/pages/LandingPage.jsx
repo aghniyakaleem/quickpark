@@ -1,19 +1,17 @@
 import React from "react";
 import { motion } from "framer-motion";
-import Navbar from "../components/Navbar";
 import { Link } from "react-router-dom";
-import { MessageCircle } from "lucide-react"; // WhatsApp-like icon
+import { MessageCircle } from "lucide-react";
 
 export default function LandingPage() {
   return (
-    <div className="bg-[#F6EEE0] min-h-screen flex flex-col relative">
-      <Navbar />
+    <div className="min-h-screen flex flex-col relative overflow-hidden bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,0.25),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(236,72,153,0.2),transparent_45%),linear-gradient(180deg,#0b1020,#020617)] text-slate-200">
 
-      {/* Hero Section */}
-      <section className="text-center py-32 flex flex-col items-center justify-center flex-grow px-6">
+      {/* HERO */}
+      <section className="flex flex-col items-center justify-center text-center px-6 pt-40 pb-32">
         <motion.h1
-          className="text-6xl font-extrabold text-yellow-700 drop-shadow-sm"
-          initial={{ opacity: 0, y: -50 }}
+          className="text-6xl md:text-7xl font-extrabold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
+          initial={{ opacity: 0, y: -40 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
         >
@@ -21,118 +19,104 @@ export default function LandingPage() {
         </motion.h1>
 
         <motion.p
-          className="mt-6 text-xl text-[#362706] max-w-3xl"
+          className="mt-8 max-w-3xl text-lg md:text-2xl leading-relaxed text-slate-300"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.5, duration: 0.8 }}
+          transition={{ delay: 0.4, duration: 0.8 }}
         >
-          The luxury <span className="font-semibold">valet SaaS platform</span>{" "}
+          The <span className="text-white font-semibold">luxury valet SaaS</span>{" "}
           built for{" "}
-          <span className="italic">
+          <span className="italic text-slate-200">
             cafés, restaurants, hotels, and wedding venues
           </span>
-          . Deliver a seamless valet experience that delights your customers and
-          enhances your brand.
+          . Deliver a seamless valet experience that delights customers and
+          elevates your brand.
         </motion.p>
 
+        {/* CTA */}
         <motion.div
-          className="mt-10 flex gap-6 flex-wrap justify-center"
+          className="mt-14 flex gap-6 flex-wrap justify-center"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1, duration: 0.8 }}
+          transition={{ delay: 0.8, duration: 0.6 }}
         >
           <a
             href="tel:+918247767904"
-            className="px-6 py-3 bg-yellow-600 text-white rounded-xl shadow hover:opacity-90 transition"
+            className="px-8 py-4 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold shadow-2xl hover:scale-105 transition transform"
           >
             📞 +91 8247767904
           </a>
+
           <a
             href="mailto:quickpark92@gmail.com"
-            className="px-6 py-3 bg-yellow-700 text-white rounded-xl shadow hover:opacity-90 transition"
+            className="px-8 py-4 rounded-full bg-white/10 backdrop-blur-lg border border-white/20 text-white font-semibold shadow-lg hover:bg-white/20 transition"
           >
             ✉️ quickpark92@gmail.com
           </a>
         </motion.div>
       </section>
 
-      {/* WhatsApp Chat Button (for Meta Review) */}
+      {/* FEATURES */}
+      <section className="max-w-6xl mx-auto px-6 pb-32 grid grid-cols-1 md:grid-cols-3 gap-10">
+        {[
+          {
+            title: "Multi-Location",
+            text:
+              "Onboard multiple branches or venues with unique QR codes under one platform.",
+          },
+          {
+            title: "Seamless Experience",
+            text:
+              "Guests scan a QR and receive real-time WhatsApp updates on their vehicle.",
+          },
+          {
+            title: "Payments & Insights",
+            text:
+              "Accept cash or online payments and gain deep insights into valet performance.",
+          },
+        ].map((item, i) => (
+          <motion.div
+            key={item.title}
+            className="glass p-10 transition hover:scale-[1.05] hover:shadow-2xl"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 + i * 0.15 }}
+          >
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+              {item.title}
+            </h3>
+            <p className="mt-4 text-slate-300 leading-relaxed">{item.text}</p>
+          </motion.div>
+        ))}
+      </section>
+
+      {/* WHATSAPP FLOAT */}
       <motion.div
         className="fixed bottom-6 right-6 z-50"
-        initial={{ opacity: 0, scale: 0.8 }}
+        initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 1.2, duration: 0.8 }}
+        transition={{ delay: 1 }}
       >
         <a
           href="https://wa.me/917032678692"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-3 bg-[#25D366] text-white px-5 py-3 rounded-full shadow-lg hover:bg-[#1ebe5d] transition transform hover:scale-105"
+          className="flex items-center gap-3 bg-[#25D366] text-white px-6 py-4 rounded-full shadow-2xl hover:scale-110 transition transform"
         >
           <MessageCircle className="w-6 h-6" />
           <span className="font-semibold">Chat on WhatsApp</span>
         </a>
       </motion.div>
 
-      {/* Features */}
-      <section className="max-w-5xl mx-auto px-6 py-20 grid grid-cols-1 md:grid-cols-3 gap-8">
-        <motion.div
-          className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition"
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <h3 className="text-2xl font-bold text-yellow-700">Multi-Location</h3>
-          <p className="mt-4 text-[#362706]">
-            Onboard multiple branches or venues under one platform with unique QR
-            codes for each location.
-          </p>
-        </motion.div>
-
-        <motion.div
-          className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition"
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <h3 className="text-2xl font-bold text-yellow-700">Seamless Experience</h3>
-          <p className="mt-4 text-[#362706]">
-            Guests scan a QR, enter details, and receive real-time updates on
-            their car via WhatsApp.
-          </p>
-        </motion.div>
-
-        <motion.div
-          className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-2xl transition"
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.7 }}
-        >
-          <h3 className="text-2xl font-bold text-yellow-700">Payments & Insights</h3>
-          <p className="mt-4 text-[#362706]">
-            Offer cash or online payments, track valet performance, and delight
-            customers with efficiency.
-          </p>
-        </motion.div>
-      </section>
-
-      {/* Footer */}
-      <footer className="bg-[#F6EEE0] text-[#362706] text-sm py-6 border-t">
-        <div className="max-w-5xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 px-6">
+      {/* FOOTER */}
+      <footer className="border-t border-white/10 py-8 text-sm text-slate-400">
+        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} QuickPark. All rights reserved.</p>
           <div className="flex gap-6">
-            <Link to="/terms" className="hover:underline">
-              Terms & Conditions
-            </Link>
-            <Link to="/privacy" className="hover:underline">
-              Privacy Policy
-            </Link>
-            <Link to="/faq" className="hover:underline">
-              FAQ
-            </Link>
-            <Link to="/about" className="hover:underline">
-              About Us
-            </Link>
+            <Link to="/terms" className="hover:text-white transition">Terms</Link>
+            <Link to="/privacy" className="hover:text-white transition">Privacy</Link>
+            <Link to="/faq" className="hover:text-white transition">FAQ</Link>
+            <Link to="/about" className="hover:text-white transition">About</Link>
           </div>
         </div>
       </footer>

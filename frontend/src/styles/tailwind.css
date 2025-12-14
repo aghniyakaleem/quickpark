@@ -1,3 +1,64 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ================================
+   GLOBAL DARK MAGICAL BACKGROUND
+================================ */
+body {
+  font-family: 'Inter', sans-serif;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(139, 92, 246, 0.25), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.2), transparent 45%),
+    linear-gradient(180deg, #0b1020, #020617);
+  color: #e5e7eb;
+  min-height: 100vh;
+}
+
+/* ================================
+   GLASS / FROSTED CARDS
+================================ */
+.glass {
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1.75rem;
+}
+
+/* ================================
+   PREMIUM BUTTON
+================================ */
+.btn-primary {
+  @apply px-6 py-3 rounded-xl font-semibold text-white transition-all;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6, #ec4899);
+  box-shadow: 0 10px 30px rgba(99, 102, 241, 0.4);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px) scale(1.04);
+  box-shadow: 0 25px 60px rgba(139, 92, 246, 0.55);
+}
+
+/* ================================
+   MODERN LOADER
+================================ */
+.loader {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 0deg,
+    #6366f1,
+    #8b5cf6,
+    #ec4899,
+    #6366f1
+  );
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

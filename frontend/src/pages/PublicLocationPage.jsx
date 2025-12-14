@@ -1,4 +1,3 @@
-// frontend/src/pages/PublicLocationPage.jsx
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import api from "../axiosConfig";
@@ -25,40 +24,25 @@ export default function PublicLocationPage() {
     }
 
     setLoading(true);
-
-    // Open blank WhatsApp window immediately
-    const whatsappNumber = "918247767904"; // MSG91 WhatsApp business number
+    const whatsappNumber = "918247767904";
     const whatsappWindow = window.open("about:blank", "_blank");
 
     try {
-      // Create ticket on backend
       const res = await api.post(`/api/tickets/public/${slug}`, { phone: rawPhone });
       const newTicket = res.data.ticket;
       setTicket(newTicket);
 
-      // Update the blank WhatsApp window with prefilled message
       const message = `Hi QuickPark, my ticket ID is ${newTicket.ticketShortId}`;
-      const whatsappURL = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
+      whatsappWindow.location.href = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
 
-      whatsappWindow.location.href = whatsappURL;
-
-      // Initialize Socket.IO
-      const s = io(import.meta.env.VITE_API_URL_WS, {
-        path: "/socket.io",
-        transports: ["websocket"],
-      });
-
+      const s = io(import.meta.env.VITE_API_URL_WS, { path: "/socket.io", transports: ["websocket"] });
       setSocket(s);
 
       s.on("connect", () => {
-        console.log("Socket connected:", s.id);
-        if (newTicket.locationId) {
-          s.emit("joinLocation", newTicket.locationId);
-        }
+        if (newTicket.locationId) s.emit("joinLocation", newTicket.locationId);
       });
 
       s.on("ticket:updated", (updatedTicket) => {
-        // compare same key (_id)
         if (updatedTicket._id === newTicket.id || updatedTicket._id === newTicket._id) {
           setTicket((prev) => ({ ...prev, ...updatedTicket }));
         }
@@ -81,60 +65,37 @@ export default function PublicLocationPage() {
   useEffect(() => () => socket?.disconnect(), [socket]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 p-6">
+    <div className="min-h-screen flex items-center justify-center bg-[radial-gradient(circle_at_20%_20%,rgba(139,92,246,0.05),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(236,72,153,0.03),transparent_50%),linear-gradient(180deg,#0b1020,#020617)] p-6 text-white">
       {!ticket ? (
-        <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-          <h1 className="text-2xl font-bold text-gray-800 mb-6 text-center">
-            🚗 Get Your Valet Ticket
-          </h1>
+        <div className="w-full max-w-md bg-white/5 backdrop-blur-xl border border-white/20 rounded-2xl shadow-2xl p-8">
+          <h1 className="text-2xl font-bold text-center mb-6">🚗 Get Your Valet Ticket</h1>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="text-left">
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                Phone Number (India)
-              </label>
-              <div className="flex items-center border border-gray-300 rounded-lg focus-within:ring-2 focus-within:ring-yellow-500 overflow-hidden">
-                <span className="px-3 text-gray-600 font-medium bg-gray-100">+91</span>
+              <label htmlFor="phone" className="block text-sm font-medium mb-2">Phone Number (India)</label>
+              <div className="flex items-center border border-white/20 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-400">
+                <span className="px-3 bg-white/10 text-white">+91</span>
                 <input
-                  id="phone"
                   type="tel"
+                  id="phone"
                   value={rawPhone}
                   onChange={handlePhoneChange}
-                  placeholder="Enter 10-digit number"
-                  className="flex-1 px-3 py-3 outline-none text-gray-800 font-medium"
+                  placeholder="Enter 10-digit phone"
+                  className="w-full p-3 bg-transparent text-white placeholder-white/50 focus:outline-none"
                   required
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                Must be a valid 10-digit Indian mobile number.
-              </p>
             </div>
-
             <button
               type="submit"
-              className={`w-full py-3 rounded-lg font-semibold text-white transition ${
-                loading ? "bg-yellow-400 cursor-not-allowed" : "bg-yellow-600 hover:bg-yellow-700"
-              }`}
               disabled={loading}
+              className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 py-3 rounded-xl shadow-lg hover:scale-105 transition transform text-white font-semibold"
             >
-              {loading ? "Generating Ticket..." : "Get Ticket"}
+              {loading ? "Processing..." : "Get My Ticket"}
             </button>
           </form>
         </div>
       ) : (
-        <div className="w-full max-w-lg bg-white rounded-2xl shadow-lg p-8 text-center border border-gray-100">
-          <h2 className="text-xl font-bold text-gray-800 mb-4">
-            🎟️ Ticket #{ticket.ticketShortId}
-          </h2>
-          <div className="mb-6">
-            <TicketTimeline status={ticket.status} />
-          </div>
-          <p className="text-sm text-gray-500 mb-4">
-            Status: <span className="font-semibold">{ticket.status}</span>
-          </p>
-          <p className="text-sm text-gray-500">
-            Vehicle: <span className="font-semibold">{ticket.vehicleNumber || "Not assigned"}</span>
-          </p>
-        </div>
+        <TicketTimeline ticket={ticket} />
       )}
     </div>
   );
