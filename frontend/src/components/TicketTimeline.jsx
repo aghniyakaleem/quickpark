@@ -10,10 +10,8 @@ const steps = [
 ];
 
 const labels = {
-  AWAITING_VEHICLE_NUMBER: "Awaiting Vehicle",
   PARKED: "Parked",
   RECALLED: "Recalled",
-  ETA: "ETA",
   READY_AT_GATE: "Ready",
   DELIVERED: "Delivered",
 };

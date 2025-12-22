@@ -134,7 +134,7 @@ export default function ValetDashboard() {
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-white/20 px-4 py-3 rounded-xl bg-white/5 text-white font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+          className="border border-white/20 px-4 py-3 rounded-xl bg-white/5 text-black font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
         >
           <option value="ALL">All Tickets</option>
           <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
@@ -186,7 +186,7 @@ export default function ValetDashboard() {
                     <select
                       defaultValue={t.etaMinutes || ""}
                       onChange={(e) => handleLocalChange(id, "etaMinutes", Number(e.target.value))}
-                      className="border p-2 rounded w-full bg-white/10 text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                      className="border p-2 rounded w-full bg-white/10 text-black focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
                     >
                       <option value="">Select ETA</option>
                       <option value={2}>2 mins</option>
@@ -198,7 +198,7 @@ export default function ValetDashboard() {
                     <select
                       defaultValue={t.status}
                       onChange={(e) => handleLocalChange(id, "status", e.target.value)}
-                      className="border border-white/20 p-2 rounded-lg w-full bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
+                      className="border border-white/20 p-2 rounded-lg w-full bg-white/5 text-black focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
                     >
                       <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
                       <option value="PARKED">Parked</option>

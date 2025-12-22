@@ -1,7 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { MessageCircle } from "lucide-react";
 
 export default function LandingPage() {
   return (
@@ -89,24 +88,6 @@ export default function LandingPage() {
           </motion.div>
         ))}
       </section>
-
-      {/* WHATSAPP FLOAT */}
-      <motion.div
-        className="fixed bottom-6 right-6 z-50"
-        initial={{ opacity: 0, scale: 0.85 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ delay: 1 }}
-      >
-        <a
-          href="https://wa.me/917032678692"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 bg-[#25D366] text-white px-6 py-4 rounded-full shadow-2xl hover:scale-110 transition transform"
-        >
-          <MessageCircle className="w-6 h-6" />
-          <span className="font-semibold">Chat on WhatsApp</span>
-        </a>
-      </motion.div>
 
       {/* FOOTER */}
       <footer className="border-t border-white/10 py-8 text-sm text-slate-400">
