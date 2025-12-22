@@ -131,19 +131,39 @@ export default function ValetDashboard() {
       <p className="text-xl font-semibold mb-6">Cars processed today: <span className="text-indigo-400">{tickets.length}</span></p>
 
       <div className="flex gap-4 mb-6">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="border border-white/20 px-4 py-3 rounded-xl bg-white/5 text-black font-semibold shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
-        >
-          <option value="ALL">All Tickets</option>
-          <option value="AWAITING_VEHICLE_NUMBER">Awaiting Vehicle</option>
-          <option value="PARKED">Parked</option>
-          <option value="RECALLED">Recalled</option>
-          <option value="READY_FOR_PICKUP">Ready for Pickup</option>
-          <option value="DELIVERED">Delivered</option>
-        </select>
-      </div>
+  <select
+    value={statusFilter}
+    onChange={(e) => setStatusFilter(e.target.value)}
+    className="
+      px-5 py-3 rounded-xl
+      bg-white/90 backdrop-blur-md
+      text-gray-900 font-semibold
+      border border-white/40
+      shadow-xl
+      focus:outline-none focus:ring-2 focus:ring-indigo-500
+      transition
+    "
+  >
+    <option value="ALL" className="bg-white text-gray-900">
+      All Tickets
+    </option>
+    <option value="AWAITING_VEHICLE_NUMBER" className="bg-white text-gray-900">
+      Awaiting Vehicle
+    </option>
+    <option value="PARKED" className="bg-white text-gray-900">
+      Parked
+    </option>
+    <option value="RECALLED" className="bg-white text-gray-900">
+      Recalled
+    </option>
+    <option value="READY_FOR_PICKUP" className="bg-white text-gray-900">
+      Ready for Pickup
+    </option>
+    <option value="DELIVERED" className="bg-white text-gray-900">
+      Delivered
+    </option>
+  </select>
+</div>
 
       <div className="overflow-x-auto shadow-2xl rounded-xl">
         <table className="w-full border-collapse bg-white/5 text-white">
