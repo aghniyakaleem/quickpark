@@ -40,8 +40,8 @@ async function seed() {
     });
 
     const freeLocation = await Location.create({
-      name: "Cafe Deluxe",
-      slug: "cafe-deluxe",
+      name: "Mak's Kitchen",
+      slug: "maks-kitchen",
       paymentRequired: false,
     });
     const paidLocation = await Location.create({
